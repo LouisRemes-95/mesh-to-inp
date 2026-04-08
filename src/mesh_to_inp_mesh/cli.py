@@ -7,10 +7,7 @@ from rich.traceback import install
 install(show_locals=True)
 
 from mesh_to_inp_mesh.convert import convert
-
-
-class UserError(Exception):
-    pass
+from mesh_to_inp_mesh.errors import UserError
 
 
 console = Console()

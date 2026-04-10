@@ -144,6 +144,7 @@ def _rewrite_abaqus_lines(lines: list[str]) -> list[str]:
 
     return [header[0], " ".join(header[1:]), "Automatic python generated cohesive elements", *body]
 
+
 def _find_next_element_id(lines: list[str]) -> int:
     for line in reversed(lines):
         if line and not line.startswith("*"):

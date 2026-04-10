@@ -13,7 +13,7 @@ This project uses **uv** for environment and dependency management.
 ### Option 1 — Clone the repository
 
 ```bash
-git clone https://github.com/<username>/mesh_to_inp_mesh.git
+git clone https://github.com/LouisRemes-95/mesh_to_inp_mesh.git
 cd mesh_to_inp_mesh
 uv sync
 ```
@@ -23,7 +23,7 @@ uv sync
 You can also install the tool directly into a project environment:
 
 ```bash
-uv add git+https://github.com/<username>/mesh_to_inp_mesh.git
+uv add git+https://github.com/LouisRemes-95/mesh_to_inp_mesh.git
 ```
 
 This makes the `mesh-to-inp-mesh` command available in the environment.

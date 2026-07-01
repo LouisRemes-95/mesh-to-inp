@@ -47,12 +47,7 @@ def main():
         case = load_case(args.case_path)
 
         with console.status("[cyan]Converting to .inp..."):
-            convert(
-                case.mesh.input,
-                case.job.output,
-                materials=case.materials,
-                solid_section=case.solid_section,
-            )
+            convert(case)
 
         console.print(f"[green]✔ Converting to .inp complete[/green]")
 

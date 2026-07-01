@@ -1,4 +1,4 @@
-# mesh_to_inp_mesh
+# mesh_to_inp
 
 Convert volumetric meshes (e.g. `.mesh` or other `meshio`-supported formats) to Abaqus `.inp` files with automatically generated cohesive interface elements.
 
@@ -13,8 +13,8 @@ This project uses **uv** for environment and dependency management.
 ### Option 1 — Clone the repository
 
 ```bash
-git clone https://github.com/LouisRemes-95/mesh_to_inp_mesh.git
-cd mesh_to_inp_mesh
+git clone https://github.com/LouisRemes-95/mesh_to_inp.git
+cd mesh_to_inp
 uv sync
 ```
 
@@ -23,7 +23,7 @@ uv sync
 You can also install the tool directly into a project environment:
 
 ```bash
-uv add git+https://github.com/LouisRemes-95/mesh_to_inp_mesh.git
+uv add git+https://github.com/LouisRemes-95/mesh_to_inp.git
 ```
 
 This makes the `mesh-to-inp-mesh` command available in the environment.
@@ -50,7 +50,7 @@ The conversion function can also be used directly in Python:
 
 ```python
 from pathlib import Path
-from mesh_to_inp_mesh.convert import convert
+from mesh_to_inp.convert import convert
 
 convert(Path("input.mesh"), Path("output.inp"))
 ```
@@ -60,7 +60,7 @@ convert(Path("input.mesh"), Path("output.inp"))
 This module is intended to be used as one step in a larger processing pipeline:
 
 ```
-CT scan → cleaning → smoothing → meshing → mesh_to_inp_mesh → Abaqus simulation
+CT scan → cleaning → smoothing → meshing → mesh_to_inp → Abaqus simulation
 ```
 
 Each step of the workflow is implemented as a separate module to keep the pipeline modular and reproducible.

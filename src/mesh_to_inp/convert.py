@@ -3,7 +3,7 @@ from pathlib import Path
 import meshio
 import numpy as np
 
-from mesh_to_inp_mesh.errors import UserError
+from mesh_to_inp.errors import UserError
 
 
 def convert(input_path, output_path: Path) -> None:

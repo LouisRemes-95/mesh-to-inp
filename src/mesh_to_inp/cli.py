@@ -6,8 +6,8 @@ from rich.traceback import install
 
 install(show_locals=True)
 
-from mesh_to_inp_mesh.convert import convert
-from mesh_to_inp_mesh.errors import UserError
+from mesh_to_inp.convert import convert
+from mesh_to_inp.errors import UserError
 
 
 console = Console()

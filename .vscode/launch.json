@@ -1,11 +1,11 @@
 {
-    "version": "0.2.0",
+    "version": "0.3.0",
     "configurations": [
         {
-            "name": "Debug mesh-to-inp-mesh",
+            "name": "Debug mesh-to-inp",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/mesh_to_inp_mesh/cli.py",
+            "program": "${workspaceFolder}/src/mesh_to_inp/cli.py",
             "console": "integratedTerminal",
             "args": [
                 "${workspaceFolder}/mmg_remesh_x4_S_V1.mesh"

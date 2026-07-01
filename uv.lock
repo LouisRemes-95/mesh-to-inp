@@ -28,7 +28,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mesh-to-inp-mesh"
+name = "mesh-to-inp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

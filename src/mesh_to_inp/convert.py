@@ -5,9 +5,9 @@ import numpy as np
 
 from mesh_to_inp.mesh_processing import read_mesh_safe, build_region_separated_mesh
 from mesh_to_inp.cohesive import extract_interface_triangles, make_cohesive_element_lines
-from mesh_to_inp.abaqus_writer import read_lines, rewrite_abaqus_lines, find_next_element_id
+from mesh_to_inp.abaqus_writer import read_lines, rewrite_abaqus_lines, find_next_element_id, make_material_lines
 
-def convert(input_path, output_path: Path) -> None:
+def convert(input_path, output_path: Path, materials=None) -> None:
     """
     Convert a meshio mesh file to Abaqus part and insert cohesive elements
     between tetrahedral regions.
@@ -43,6 +43,9 @@ def convert(input_path, output_path: Path) -> None:
     start_elem_id = find_next_element_id(lines)
     lines.extend(make_cohesive_element_lines(tris_regions, region_lut, start_elem_id))
     lines.extend(["*END PART"])
+
+    if materials:
+        lines.extend(make_material_lines(materials))
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

@@ -48,7 +48,13 @@ def make_cohesive_element_lines(
     region_lut: dict[int, np.ndarray],
     start_elem_id: int,
 ) -> list[str]:
-    lines = ["*ELEMENT, TYPE=COH3D6, ELSET=COHESIVE"]
+    lines = [
+        "",
+        "** =============================================================================",
+        "** COHESIVE ELEMENTS",
+        "** =============================================================================",
+        "*ELEMENT, TYPE=COH3D6, ELSET=COHESIVE",
+    ]
 
     for i, cohe_elem in enumerate(tris_regions):
         elem_id = start_elem_id + i

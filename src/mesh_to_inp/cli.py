@@ -8,6 +8,7 @@ install(show_locals=True)
 
 from mesh_to_inp.convert import convert
 from mesh_to_inp.errors import UserError
+from mesh_to_inp.config import load_case
 
 
 console = Console()
@@ -27,23 +28,12 @@ def _build_parser() -> _RichArgumentParser:
     )
         
     parser.add_argument(
-        "input_path",
-        type = Path,
-        help = "Path to the input mesh file",
-        )
-    parser.add_argument(
-        "-o",
-        "--out",
-        type = Path,
-        default = None,
-        help = "Path where the output needs to be saved (with file name and suffix)"
+        "case_path",
+        type=Path,
+        help="Path to the YAML case file",
     )
 
     return parser
-
-
-def _resolve_output_path(input_path: Path, output_path: Path | None) -> Path:
-    return (output_path or input_path.with_suffix(".inp")).resolve()
 
 
 def main():
@@ -52,17 +42,19 @@ def main():
     console.print("[bold]mesh-to-inp-mesh[/bold]")
 
     args = parser.parse_args()
-    output_path =  _resolve_output_path(args.input_path, args.out)
 
     try:
+        case = load_case(args.case_path)
+
         with console.status("[cyan]Converting to .inp..."):
-            convert(args.input_path, output_path)
+            convert(case.mesh.input, case.mesh.output)
+
         console.print(f"[green]✔ Converting to .inp complete[/green]")
-    
+
         try:
-            rel = output_path.relative_to(Path.cwd())
+            rel = case.mesh.output.relative_to(Path.cwd())
         except ValueError:
-            rel = output_path
+            rel = case.mesh.output
 
         console.print(f"Wrote: {rel}")
     

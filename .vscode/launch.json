@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/src/mesh_to_inp/cli.py",
             "console": "integratedTerminal",
             "args": [
-                "${workspaceFolder}/mmg_remesh_x4_S_V1.mesh"
+                "${workspaceFolder}/sim_config.yaml"
             ]
         }
     ]

@@ -1,0 +1,3 @@
+mesh:
+  input: mmg_remesh_x4_S_V1.mesh
+  output: mmg_remesh_x4_S_V1.inp

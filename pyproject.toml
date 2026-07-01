@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "meshio>=5.3.5",
+    "pyyaml>=6.0.3",
     "rich>=14.3.3",
 ]
 

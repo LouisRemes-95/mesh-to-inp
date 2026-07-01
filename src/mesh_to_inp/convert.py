@@ -4,7 +4,7 @@ import meshio
 import numpy as np
 
 from mesh_to_inp.mesh_processing import read_mesh_safe, build_region_separated_mesh
-
+from mesh_to_inp.cohesive import extract_interface_triangles, make_cohesive_element_lines
 
 def convert(input_path, output_path: Path) -> None:
     """
@@ -27,7 +27,7 @@ def convert(input_path, output_path: Path) -> None:
         return
 
     out_points, out_tetras, region_lut = build_region_separated_mesh(mesh, key)
-    tris_regions = _extract_interface_triangles(mesh, key)
+    tris_regions = extract_interface_triangles(mesh, key)
 
     cohesive_mesh = meshio.Mesh(
         points=out_points,
@@ -40,32 +40,11 @@ def convert(input_path, output_path: Path) -> None:
     lines = _rewrite_abaqus_lines(lines)
 
     start_elem_id = _find_next_element_id(lines)
-    lines.extend(_make_cohesive_element_lines(tris_regions, region_lut, start_elem_id))
+    lines.extend(make_cohesive_element_lines(tris_regions, region_lut, start_elem_id))
     lines.extend(["*END PART"])
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-
-
-def _extract_interface_triangles(mesh: meshio.Mesh, key: str) -> np.ndarray:
-    tris = mesh.cells_dict["tetra"][:, [[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]].reshape(-1, 3)
-    regions = np.repeat(mesh.cell_data_dict[key]["tetra"], 4)[:, None]
-    sorted_tris_region = np.hstack([np.sort(tris, axis=1), regions])
-
-    order_by_region = np.argsort(sorted_tris_region[:, -1])
-    tris = tris[order_by_region, :]
-    sorted_tris_region = sorted_tris_region[order_by_region, :]
-
-    _, inverse, counts = np.unique(sorted_tris_region, axis=0, return_inverse=True, return_counts=True)
-    is_boundary = counts[inverse] == 1
-    tris = tris[is_boundary, :]
-    sorted_tris_region = sorted_tris_region[is_boundary, :]
-
-    _, index, inverse = np.unique(sorted_tris_region[:, :3], axis=0, return_index=True, return_inverse=True)
-    tris_regions = np.hstack([tris, sorted_tris_region[:, 3:], sorted_tris_region[index[inverse], 3:]])
-    keep = np.ones(len(tris_regions), dtype=bool)
-    keep[index] = False
-    return tris_regions[keep]
 
 
 def _read_lines(path: Path) -> list[str]:
@@ -108,12 +87,3 @@ def _find_next_element_id(lines: list[str]) -> int:
         if line and not line.startswith("*"):
             return int(line.split(",")[0]) + 1
     raise ValueError("Could not find any element definition line.")
-
-
-def _make_cohesive_element_lines( tris_regions: np.ndarray, region_lut: dict[int, np.ndarray], start_elem_id: int) -> list[str]:
-    lines = ["*ELEMENT, TYPE=COH3D6, ELSET=COHESIVE"]
-
-    for i, cohe_elem in enumerate(tris_regions):
-        lines.append(",".join(map(str, np.concatenate(([start_elem_id + i], region_lut[(cohe_elem[3])][cohe_elem[:3]].astype(np.int64)+1, region_lut[(cohe_elem[4])][cohe_elem[:3]].astype(np.int64)+1)))))
-
-    return lines

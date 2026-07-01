@@ -54,12 +54,51 @@ class MacroStressConfig:
 
 
 @dataclass(frozen=True)
+class StepIncrementConfig:
+    initial: float
+    total: float
+    minimum: float
+    maximum: float
+    max_number: int
+
+
+@dataclass(frozen=True)
+class TimeIncrementationControlsConfig:
+    enabled: bool
+    max_equilibrium_iterations: int | None
+    cutback_after_equilibrium_iterations: int | None
+    max_attempts_per_increment: int | None
+    max_severe_discontinuity_iterations: int | None
+    severe_discontinuity_iterations_for_increase: int | None
+    cutback_factor_after_divergence: float | None
+    cutback_factor_slow_convergence: float | None
+    cutback_factor_too_many_iterations: float | None
+    increase_factor_after_easy_increments: float | None
+    max_increment_increase_factor: float | None
+
+
+@dataclass(frozen=True)
+class StepControlsConfig:
+    time_incrementation: TimeIncrementationControlsConfig | None
+
+
+@dataclass(frozen=True)
+class StepConfig:
+    name: str
+    type: str
+    nlgeom: bool
+    increments: StepIncrementConfig
+    controls: StepControlsConfig
+
+
+@dataclass(frozen=True)
 class CaseConfig:
     job: JobConfig
     mesh: MeshConfig
     materials: list[MaterialConfig]
     solid_section: SolidSectionConfig
     macro_stress: MacroStressConfig
+    step: StepConfig
 
 
 def load_case(path: Path) -> CaseConfig:
@@ -108,6 +147,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
     materials = _parse_materials(raw.get("materials"))
     solid_section = _parse_solid_section(raw.get("sections"), materials)
     macro_stress = _parse_macro_stress(raw.get("loading"))
+    step = _parse_step(raw.get("step"))
 
     return CaseConfig(
         job=JobConfig(
@@ -120,6 +160,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         materials=materials,
         solid_section=solid_section,
         macro_stress=macro_stress,
+        step=step,
     )
 
 
@@ -238,6 +279,7 @@ def _parse_solid_section(
         material=material.strip(),
     )
 
+
 def _parse_macro_stress(raw: Any) -> MacroStressConfig:
     if not isinstance(raw, dict):
         raise UserError("Missing or invalid 'loading' section.")
@@ -262,4 +304,167 @@ def _parse_macro_stress(raw: Any) -> MacroStressConfig:
         sxy=get_component("sxy"),
         sxz=get_component("sxz"),
         syz=get_component("syz"),
+    )
+
+
+def _parse_step(raw: Any) -> StepConfig:
+    if raw is None:
+        raw = {}
+
+    if not isinstance(raw, dict):
+        raise UserError("'step' must be a dictionary.")
+
+    step_type = raw.get("type", "quasi_static")
+
+    if step_type != "quasi_static":
+        raise UserError(
+            f"Unsupported step.type '{step_type}'. "
+            "Currently only 'quasi_static' is supported."
+        )
+
+    name = raw.get("name", "MacroStressLoading")
+    nlgeom = raw.get("nlgeom", True)
+    increments_raw = raw.get("increments", {})
+
+    if not isinstance(name, str) or not name.strip():
+        raise UserError("step.name must be a non-empty string.")
+
+    if not isinstance(nlgeom, bool):
+        raise UserError("step.nlgeom must be true or false.")
+
+    if not isinstance(increments_raw, dict):
+        raise UserError("step.increments must be a dictionary.")
+
+    def get_float(name: str, default: float) -> float:
+        value = increments_raw.get(name, default)
+
+        if not isinstance(value, int | float):
+            raise UserError(f"step.increments.{name} must be a number.")
+
+        value = float(value)
+
+        if value <= 0.0:
+            raise UserError(f"step.increments.{name} must be > 0.")
+
+        return value
+
+    def get_int(name: str, default: int) -> int:
+        value = increments_raw.get(name, default)
+
+        if not isinstance(value, int):
+            raise UserError(f"step.increments.{name} must be an integer.")
+
+        if value <= 0:
+            raise UserError(f"step.increments.{name} must be > 0.")
+
+        return value
+
+    increments = StepIncrementConfig(
+        initial=get_float("initial", 0.01),
+        total=get_float("total", 1.0),
+        minimum=get_float("minimum", 1.0e-8),
+        maximum=get_float("maximum", 0.1),
+        max_number=get_int("max_number", 100000),
+    )
+
+    if increments.minimum > increments.initial:
+        raise UserError("step.increments.minimum cannot be larger than initial.")
+
+    if increments.initial > increments.maximum:
+        raise UserError("step.increments.initial cannot be larger than maximum.")
+
+    if increments.maximum > increments.total:
+        raise UserError("step.increments.maximum cannot be larger than total.")
+
+    controls = _parse_step_controls(raw.get("controls"))
+
+    return StepConfig(
+        name=name.strip(),
+        type=step_type,
+        nlgeom=nlgeom,
+        increments=increments,
+        controls=controls,
+    )
+
+
+def _parse_step_controls(raw: Any) -> StepControlsConfig:
+    if raw is None:
+        return StepControlsConfig(time_incrementation=None)
+
+    if not isinstance(raw, dict):
+        raise UserError("step.controls must be a dictionary.")
+
+    time_raw = raw.get("time_incrementation")
+
+    if time_raw is None:
+        return StepControlsConfig(time_incrementation=None)
+
+    if not isinstance(time_raw, dict):
+        raise UserError("step.controls.time_incrementation must be a dictionary.")
+
+    enabled = time_raw.get("enabled", True)
+
+    if not isinstance(enabled, bool):
+        raise UserError("step.controls.time_incrementation.enabled must be true or false.")
+
+    def optional_int(field: str) -> int | None:
+        value = time_raw.get(field)
+
+        if value is None:
+            return None
+
+        if not isinstance(value, int):
+            raise UserError(f"step.controls.time_incrementation.{field} must be an integer.")
+
+        if value <= 0:
+            raise UserError(f"step.controls.time_incrementation.{field} must be > 0.")
+
+        return value
+
+    def optional_float(field: str) -> float | None:
+        value = time_raw.get(field)
+
+        if value is None:
+            return None
+
+        if not isinstance(value, int | float):
+            raise UserError(f"step.controls.time_incrementation.{field} must be a number.")
+
+        value = float(value)
+
+        if value <= 0.0:
+            raise UserError(f"step.controls.time_incrementation.{field} must be > 0.")
+
+        return value
+
+    return StepControlsConfig(
+        time_incrementation=TimeIncrementationControlsConfig(
+            enabled=enabled,
+            max_equilibrium_iterations=optional_int("max_equilibrium_iterations"),
+            cutback_after_equilibrium_iterations=optional_int(
+                "cutback_after_equilibrium_iterations"
+            ),
+            max_attempts_per_increment=optional_int("max_attempts_per_increment"),
+            max_severe_discontinuity_iterations=optional_int(
+                "max_severe_discontinuity_iterations"
+            ),
+            severe_discontinuity_iterations_for_increase=optional_int(
+                "severe_discontinuity_iterations_for_increase"
+            ),
+            cutback_factor_after_divergence=optional_float(
+                "cutback_factor_after_divergence"
+            ),
+            cutback_factor_slow_convergence=optional_float(
+                "cutback_factor_slow_convergence"
+            ),
+            cutback_factor_too_many_iterations=optional_float(
+                "cutback_factor_too_many_iterations"
+            ),
+            increase_factor_after_easy_increments=optional_float(
+                "increase_factor_after_easy_increments"
+            ),
+            max_increment_increase_factor=optional_float(
+                "max_increment_increase_factor"
+            ),
+        )
     )

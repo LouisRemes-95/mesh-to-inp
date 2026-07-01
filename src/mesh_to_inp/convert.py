@@ -12,8 +12,14 @@ from mesh_to_inp.abaqus_writer import (
     make_material_lines,
     make_solid_section_lines,
     make_assembly_lines,
+    make_quasi_static_step_with_cloads_lines,
 )
-from mesh_to_inp.loading import compute_face_resultants
+from mesh_to_inp.loading import (
+    compute_face_resultants,
+    compute_boundary_tributary_areas,
+    compute_nodal_forces_from_face_resultants,
+    print_nodal_force_summary,
+)
 
 def convert(case: CaseConfig) -> None:
     """
@@ -43,13 +49,20 @@ def convert(case: CaseConfig) -> None:
 
     face_resultants = compute_face_resultants(out_points, case.macro_stress)
 
-    print("Face resultants:")
-    print(f"  XMIN: {face_resultants.xmin}")
-    print(f"  XMAX: {face_resultants.xmax}")
-    print(f"  YMIN: {face_resultants.ymin}")
-    print(f"  YMAX: {face_resultants.ymax}")
-    print(f"  ZMIN: {face_resultants.zmin}")
-    print(f"  ZMAX: {face_resultants.zmax}")
+    original_tetras = mesh.cells_dict["tetra"]
+    original_regions = mesh.cell_data_dict[key]["tetra"]
+
+    tributary_areas = compute_boundary_tributary_areas(
+        points=mesh.points,
+        tetras=original_tetras,
+        tetra_regions=original_regions,
+        region_lut=region_lut,
+    )
+
+    nodal_forces = compute_nodal_forces_from_face_resultants(
+        face_resultants=face_resultants,
+        tributary_areas=tributary_areas,
+    )
 
     cohesive_mesh = meshio.Mesh(
         points=out_points,
@@ -73,6 +86,12 @@ def convert(case: CaseConfig) -> None:
         lines.extend(make_material_lines(case.materials))
 
     lines.extend(make_assembly_lines())
+    lines.extend(
+        make_quasi_static_step_with_cloads_lines(
+            nodal_forces=nodal_forces,
+            step=case.step,
+        )
+    )
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

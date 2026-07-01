@@ -27,3 +27,33 @@ loading:
     sxy: 0.0
     sxz: 0.0
     syz: 0.0
+
+step:
+  name: MacroStressLoading
+  type: quasi_static
+  nlgeom: true
+  increments:
+    initial: 0.01
+    total: 1.0
+    minimum: 1.0e-12
+    maximum: 0.1
+    max_number: 100000
+  controls:
+    time_incrementation:
+      enabled: true
+
+      # Main iteration limits
+      max_equilibrium_iterations: 30
+      cutback_after_equilibrium_iterations: 20
+      max_attempts_per_increment: 10
+
+      # Optional severe discontinuity controls
+      max_severe_discontinuity_iterations: 20
+      severe_discontinuity_iterations_for_increase: 8
+
+      # Optional increment scaling factors
+      cutback_factor_after_divergence: 0.25
+      cutback_factor_slow_convergence: 0.5
+      cutback_factor_too_many_iterations: 0.75
+      increase_factor_after_easy_increments: 1.5
+      max_increment_increase_factor: 1.5

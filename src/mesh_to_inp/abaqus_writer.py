@@ -100,6 +100,115 @@ def make_assembly_lines(
     ]
 
 
+def make_quasi_static_step_with_cloads_lines(
+    nodal_forces,
+    step,
+    instance_name: str = "PART-1",
+    force_tolerance: float = 1.0e-12,
+) -> list[str]:
+    nlgeom = "YES" if step.nlgeom else "NO"
+    inc = step.increments
+
+    lines: list[str] = [
+        *make_comment("STEP"),
+        f"*STEP, NAME={step.name}, NLGEOM={nlgeom}, INC={inc.max_number}",
+        "*STATIC",
+        (
+            f"{format_float(inc.initial)}, "
+            f"{format_float(inc.total)}, "
+            f"{format_float(inc.minimum)}, "
+            f"{format_float(inc.maximum)}"
+        ),
+    ]
+
+    lines.extend(make_time_incrementation_controls_lines(step.controls))
+
+    lines.extend(
+        [
+            "",
+            "** --- Macroscopic stress loading as nodal concentrated forces ---",
+            "*CLOAD",
+        ]
+    )
+
+    for node_id in sorted(nodal_forces.forces):
+        force = nodal_forces.forces[node_id]
+
+        for dof, value in enumerate(force, start=1):
+            if abs(value) <= force_tolerance:
+                continue
+
+            lines.append(
+                f"{instance_name}.{node_id}, {dof}, {format_float(float(value))}"
+            )
+
+    lines.extend(["", "*END STEP"])
+
+    return lines
+
+
+def make_time_incrementation_controls_lines(controls) -> list[str]:
+    if controls is None:
+        return []
+
+    time_controls = controls.time_incrementation
+
+    if time_controls is None:
+        return []
+
+    if not time_controls.enabled:
+        return []
+
+    line_1 = [
+        time_controls.max_equilibrium_iterations,
+        time_controls.cutback_after_equilibrium_iterations,
+        time_controls.max_attempts_per_increment,
+        time_controls.max_severe_discontinuity_iterations,
+        time_controls.severe_discontinuity_iterations_for_increase,
+    ]
+
+    line_2 = [
+        time_controls.cutback_factor_after_divergence,
+        time_controls.cutback_factor_slow_convergence,
+        time_controls.cutback_factor_too_many_iterations,
+        time_controls.increase_factor_after_easy_increments,
+        time_controls.max_increment_increase_factor,
+    ]
+
+    lines = [
+        "",
+        "** --- Time incrementation controls ---",
+        "*CONTROLS, PARAMETERS=TIME INCREMENTATION",
+    ]
+
+    if any(value is not None for value in line_1):
+        lines.append(_format_optional_abaqus_values(line_1))
+
+    if any(value is not None for value in line_2):
+        if not any(value is not None for value in line_1):
+            lines.append("")
+        lines.append(_format_optional_abaqus_values(line_2))
+
+    return lines
+
+
+def _format_optional_abaqus_values(values: list[object | None]) -> str:
+    formatted: list[str] = []
+
+    for value in values:
+        if value is None:
+            formatted.append("")
+        elif isinstance(value, float):
+            formatted.append(format_float(value))
+        else:
+            formatted.append(str(value))
+
+    while formatted and formatted[-1] == "":
+        formatted.pop()
+
+    return ", ".join(formatted)
+
+
 def make_comment(title: str) -> list[str]:
     line = "** " + "=" * 76
     return [

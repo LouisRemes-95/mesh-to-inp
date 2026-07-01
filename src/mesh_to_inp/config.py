@@ -100,6 +100,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         materials=materials,
     )
 
+
 def _parse_materials(raw: Any) -> list[MaterialConfig]:
     if raw is None:
         return []

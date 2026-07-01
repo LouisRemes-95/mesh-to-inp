@@ -57,7 +57,15 @@ def main():
             rel = case.job.output
 
         console.print(f"Wrote: {rel}")
-        console.print(f"Loaded {len(case.materials)} material(s)")
+        console.print(
+            "Macro stress: "
+            f"sxx={case.macro_stress.sxx}, "
+            f"syy={case.macro_stress.syy}, "
+            f"szz={case.macro_stress.szz}, "
+            f"sxy={case.macro_stress.sxy}, "
+            f"sxz={case.macro_stress.sxz}, "
+            f"syz={case.macro_stress.syz}"
+        )
     
     except UserError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")

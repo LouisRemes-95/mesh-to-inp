@@ -13,6 +13,7 @@ from mesh_to_inp.abaqus_writer import (
     make_solid_section_lines,
     make_assembly_lines,
 )
+from mesh_to_inp.loading import compute_face_resultants
 
 def convert(case: CaseConfig) -> None:
     """
@@ -39,6 +40,16 @@ def convert(case: CaseConfig) -> None:
 
     out_points, out_tetras, region_lut = build_region_separated_mesh(mesh, key)
     tris_regions = extract_interface_triangles(mesh, key)
+
+    face_resultants = compute_face_resultants(out_points, case.macro_stress)
+
+    print("Face resultants:")
+    print(f"  XMIN: {face_resultants.xmin}")
+    print(f"  XMAX: {face_resultants.xmax}")
+    print(f"  YMIN: {face_resultants.ymin}")
+    print(f"  YMAX: {face_resultants.ymax}")
+    print(f"  ZMIN: {face_resultants.zmin}")
+    print(f"  ZMAX: {face_resultants.zmax}")
 
     cohesive_mesh = meshio.Mesh(
         points=out_points,

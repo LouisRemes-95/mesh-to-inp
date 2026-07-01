@@ -44,11 +44,22 @@ class SolidSectionConfig:
 
 
 @dataclass(frozen=True)
+class MacroStressConfig:
+    sxx: float
+    syy: float
+    szz: float
+    sxy: float
+    sxz: float
+    syz: float
+
+
+@dataclass(frozen=True)
 class CaseConfig:
     job: JobConfig
     mesh: MeshConfig
     materials: list[MaterialConfig]
     solid_section: SolidSectionConfig
+    macro_stress: MacroStressConfig
 
 
 def load_case(path: Path) -> CaseConfig:
@@ -96,6 +107,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
     
     materials = _parse_materials(raw.get("materials"))
     solid_section = _parse_solid_section(raw.get("sections"), materials)
+    macro_stress = _parse_macro_stress(raw.get("loading"))
 
     return CaseConfig(
         job=JobConfig(
@@ -107,6 +119,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         ),
         materials=materials,
         solid_section=solid_section,
+        macro_stress=macro_stress,
     )
 
 
@@ -223,4 +236,30 @@ def _parse_solid_section(
     return SolidSectionConfig(
         elset=elset.strip(),
         material=material.strip(),
+    )
+
+def _parse_macro_stress(raw: Any) -> MacroStressConfig:
+    if not isinstance(raw, dict):
+        raise UserError("Missing or invalid 'loading' section.")
+
+    stress_raw = raw.get("macro_stress")
+
+    if not isinstance(stress_raw, dict):
+        raise UserError("Missing or invalid 'loading.macro_stress' section.")
+
+    def get_component(name: str) -> float:
+        value = stress_raw.get(name, 0.0)
+
+        if not isinstance(value, int | float):
+            raise UserError(f"Invalid loading.macro_stress.{name}")
+
+        return float(value)
+
+    return MacroStressConfig(
+        sxx=get_component("sxx"),
+        syy=get_component("syy"),
+        szz=get_component("szz"),
+        sxy=get_component("sxy"),
+        sxz=get_component("sxz"),
+        syz=get_component("syz"),
     )

@@ -1,3 +1,15 @@
+job:
+  name: mmg_remesh_x4_S_V1
+  output: mmg_remesh_x4_S_V1.inp
+
 mesh:
   input: mmg_remesh_x4_S_V1.mesh
-  output: mmg_remesh_x4_S_V1.inp
+
+materials:
+  - name: Bulk
+    density: 1.30e-9
+    elastic:
+      E: 10000.0
+      nu: 0.4
+    plastic:
+      yield_stress: 170.0

@@ -47,16 +47,17 @@ def main():
         case = load_case(args.case_path)
 
         with console.status("[cyan]Converting to .inp..."):
-            convert(case.mesh.input, case.mesh.output)
+            convert(case.mesh.input, case.job.output)
 
         console.print(f"[green]✔ Converting to .inp complete[/green]")
 
         try:
-            rel = case.mesh.output.relative_to(Path.cwd())
+            rel = case.job.output.relative_to(Path.cwd())
         except ValueError:
-            rel = case.mesh.output
+            rel = case.job.output
 
         console.print(f"Wrote: {rel}")
+        console.print(f"Loaded {len(case.materials)} material(s)")
     
     except UserError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")

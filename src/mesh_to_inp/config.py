@@ -38,10 +38,17 @@ class MaterialConfig:
 
 
 @dataclass(frozen=True)
+class SolidSectionConfig:
+    elset: str
+    material: str
+
+
+@dataclass(frozen=True)
 class CaseConfig:
     job: JobConfig
     mesh: MeshConfig
     materials: list[MaterialConfig]
+    solid_section: SolidSectionConfig
 
 
 def load_case(path: Path) -> CaseConfig:
@@ -88,6 +95,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         raise UserError("Missing required field: mesh.input")
     
     materials = _parse_materials(raw.get("materials"))
+    solid_section = _parse_solid_section(raw.get("sections"), materials)
 
     return CaseConfig(
         job=JobConfig(
@@ -98,6 +106,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
             input=(base_dir / input_path).resolve(),
         ),
         materials=materials,
+        solid_section=solid_section,
     )
 
 
@@ -180,3 +189,38 @@ def _parse_materials(raw: Any) -> list[MaterialConfig]:
         )
 
     return materials
+
+
+def _parse_solid_section(
+    raw: Any,
+    materials: list[MaterialConfig],
+) -> SolidSectionConfig:
+    if not isinstance(raw, dict):
+        raise UserError("Missing or invalid 'sections' section.")
+
+    solid_raw = raw.get("solid")
+
+    if not isinstance(solid_raw, dict):
+        raise UserError("Missing or invalid 'sections.solid' section.")
+
+    elset = solid_raw.get("elset")
+    material = solid_raw.get("material")
+
+    if not isinstance(elset, str) or not elset.strip():
+        raise UserError("Missing or invalid field: sections.solid.elset")
+
+    if not isinstance(material, str) or not material.strip():
+        raise UserError("Missing or invalid field: sections.solid.material")
+
+    material_names = {m.name for m in materials}
+
+    if material not in material_names:
+        raise UserError(
+            f"Section references unknown material '{material}'. "
+            f"Known materials: {sorted(material_names)}"
+        )
+
+    return SolidSectionConfig(
+        elset=elset.strip(),
+        material=material.strip(),
+    )

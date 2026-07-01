@@ -13,3 +13,8 @@ materials:
       nu: 0.4
     plastic:
       yield_stress: 170.0
+
+sections:
+  solid:
+    elset: TETRA
+    material: Bulk

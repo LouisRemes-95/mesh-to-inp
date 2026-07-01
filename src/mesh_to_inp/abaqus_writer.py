@@ -79,6 +79,15 @@ def make_material_lines(materials) -> list[str]:
     return lines
 
 
+def make_solid_section_lines(section) -> list[str]:
+    return [
+        *make_comment("SECTION DEFINITIONS"),
+        "*SOLID SECTION, "
+        f"ELSET={section.elset}, "
+        f"MATERIAL={section.material}",
+    ]
+
+
 def make_comment(title: str) -> list[str]:
     line = "** " + "=" * 76
     return [

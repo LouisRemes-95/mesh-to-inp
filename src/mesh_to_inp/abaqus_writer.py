@@ -87,6 +87,18 @@ def make_solid_section_lines(section) -> list[str]:
         f"MATERIAL={section.material}",
     ]
 
+def make_assembly_lines(
+    part_name: str = "PART",
+    instance_name: str = "PART-1",
+) -> list[str]:
+    return [
+        *make_comment("ASSEMBLY"),
+        "*ASSEMBLY, NAME=Assembly",
+        f"*INSTANCE, NAME={instance_name}, PART={part_name}",
+        "*END INSTANCE",
+        "*END ASSEMBLY",
+    ]
+
 
 def make_comment(title: str) -> list[str]:
     line = "** " + "=" * 76

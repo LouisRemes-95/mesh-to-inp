@@ -23,7 +23,7 @@ class _RichArgumentParser(argparse.ArgumentParser):
 
 def _build_parser() -> _RichArgumentParser:
     parser = _RichArgumentParser(
-        prog = "mesh-to-inp-mesh", 
+        prog = "mesh-to-inp", 
         description = "Convert a .mesh (or other meshio-supported mesh) to .inp with interfaces",
     )
         
@@ -39,7 +39,7 @@ def _build_parser() -> _RichArgumentParser:
 def main():
     parser = _build_parser()
 
-    console.print("[bold]mesh-to-inp-mesh[/bold]")
+    console.print("[bold]mesh-to-inp[/bold]")
 
     args = parser.parse_args()
 

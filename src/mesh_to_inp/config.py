@@ -30,11 +30,33 @@ class PerfectPlasticConfig:
 
 
 @dataclass(frozen=True)
+class CohesiveStiffnessConfig:
+    knn: float
+    kss: float
+    ktt: float
+
+
+@dataclass(frozen=True)
+class CohesiveDamageConfig:
+    normal_strength: float
+    shear_strength: float
+    fracture_energy: float
+    stabilization: float
+
+
+@dataclass(frozen=True)
+class CohesiveConfig:
+    stiffness: CohesiveStiffnessConfig
+    damage: CohesiveDamageConfig
+
+
+@dataclass(frozen=True)
 class MaterialConfig:
     name: str
-    density: float
-    elastic: ElasticConfig
-    plastic: PerfectPlasticConfig
+    density: float | None = None
+    elastic: ElasticConfig | None = None
+    plastic: PerfectPlasticConfig | None = None
+    cohesive: CohesiveConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -179,9 +201,6 @@ def _parse_materials(raw: Any) -> list[MaterialConfig]:
             raise UserError(f"Material #{i + 1} must be a dictionary.")
 
         name = item.get("name")
-        density = item.get("density")
-        elastic_raw = item.get("elastic")
-        plastic_raw = item.get("plastic")
 
         if not isinstance(name, str) or not name.strip():
             raise UserError(f"Material #{i + 1} is missing a valid 'name'.")
@@ -193,56 +212,143 @@ def _parse_materials(raw: Any) -> list[MaterialConfig]:
 
         used_names.add(name)
 
-        if not isinstance(density, int | float):
-            raise UserError(f"Material '{name}' has invalid 'density'.")
-
-        if density <= 0:
-            raise UserError(f"Material '{name}' must have density > 0.")
-
-        if not isinstance(elastic_raw, dict):
-            raise UserError(f"Material '{name}' is missing an 'elastic' section.")
-
-        E = elastic_raw.get("E")
-        nu = elastic_raw.get("nu")
-
-        if not isinstance(E, int | float):
-            raise UserError(f"Material '{name}' has invalid elastic.E.")
-
-        if not isinstance(nu, int | float):
-            raise UserError(f"Material '{name}' has invalid elastic.nu.")
-
-        if E <= 0:
-            raise UserError(f"Material '{name}' must have elastic.E > 0.")
-
-        if not (-1.0 < nu < 0.5):
-            raise UserError(f"Material '{name}' must have -1 < elastic.nu < 0.5.")
-
-        if not isinstance(plastic_raw, dict):
-            raise UserError(f"Material '{name}' is missing a 'plastic' section.")
-
-        yield_stress = plastic_raw.get("yield_stress")
-
-        if not isinstance(yield_stress, int | float):
-            raise UserError(f"Material '{name}' has invalid plastic.yield_stress.")
-
-        if yield_stress <= 0:
-            raise UserError(f"Material '{name}' must have plastic.yield_stress > 0.")
-
-        materials.append(
-            MaterialConfig(
-                name=name,
-                density=float(density),
-                elastic=ElasticConfig(
-                    E=float(E),
-                    nu=float(nu),
-                ),
-                plastic=PerfectPlasticConfig(
-                    yield_stress=float(yield_stress),
-                ),
-            )
+        has_bulk_data = any(
+            key in item for key in ("density", "elastic", "plastic")
         )
+        has_cohesive_data = "cohesive" in item
+
+        if has_bulk_data and has_cohesive_data:
+            raise UserError(
+                f"Material '{name}' mixes bulk and cohesive definitions. "
+                "Use separate materials."
+            )
+
+        if has_cohesive_data:
+            material = _parse_cohesive_material(name, item)
+        else:
+            material = _parse_bulk_material(name, item)
+
+        materials.append(material)
 
     return materials
+
+
+def _parse_bulk_material(name: str, item: dict[str, Any]) -> MaterialConfig:
+    density = item.get("density")
+    elastic_raw = item.get("elastic")
+    plastic_raw = item.get("plastic")
+
+    if not isinstance(density, int | float):
+        raise UserError(f"Material '{name}' has invalid 'density'.")
+
+    if density <= 0:
+        raise UserError(f"Material '{name}' must have density > 0.")
+
+    if not isinstance(elastic_raw, dict):
+        raise UserError(f"Material '{name}' is missing an 'elastic' section.")
+
+    E = elastic_raw.get("E")
+    nu = elastic_raw.get("nu")
+
+    if not isinstance(E, int | float):
+        raise UserError(f"Material '{name}' has invalid elastic.E.")
+
+    if not isinstance(nu, int | float):
+        raise UserError(f"Material '{name}' has invalid elastic.nu.")
+
+    if E <= 0:
+        raise UserError(f"Material '{name}' must have elastic.E > 0.")
+
+    if not (-1.0 < nu < 0.5):
+        raise UserError(f"Material '{name}' must have -1 < elastic.nu < 0.5.")
+
+    if not isinstance(plastic_raw, dict):
+        raise UserError(f"Material '{name}' is missing a 'plastic' section.")
+
+    yield_stress = plastic_raw.get("yield_stress")
+
+    if not isinstance(yield_stress, int | float):
+        raise UserError(f"Material '{name}' has invalid plastic.yield_stress.")
+
+    if yield_stress <= 0:
+        raise UserError(f"Material '{name}' must have plastic.yield_stress > 0.")
+
+    return MaterialConfig(
+        name=name,
+        density=float(density),
+        elastic=ElasticConfig(E=float(E), nu=float(nu)),
+        plastic=PerfectPlasticConfig(yield_stress=float(yield_stress)),
+        cohesive=None,
+    )
+
+
+def _parse_cohesive_material(name: str, item: dict[str, Any]) -> MaterialConfig:
+    cohesive_raw = item.get("cohesive")
+
+    if not isinstance(cohesive_raw, dict):
+        raise UserError(f"Material '{name}' has invalid 'cohesive' section.")
+
+    stiffness_raw = cohesive_raw.get("stiffness")
+    damage_raw = cohesive_raw.get("damage")
+
+    if not isinstance(stiffness_raw, dict):
+        raise UserError(f"Material '{name}' is missing cohesive.stiffness.")
+
+    if not isinstance(damage_raw, dict):
+        raise UserError(f"Material '{name}' is missing cohesive.damage.")
+
+    def positive_float(section: dict[str, Any], field: str, label: str) -> float:
+        value = section.get(field)
+
+        if not isinstance(value, int | float):
+            raise UserError(f"Material '{name}' has invalid {label}.{field}.")
+
+        value = float(value)
+
+        if value <= 0.0:
+            raise UserError(f"Material '{name}' must have {label}.{field} > 0.")
+
+        return value
+
+    stiffness = CohesiveStiffnessConfig(
+        knn=positive_float(stiffness_raw, "knn", "cohesive.stiffness"),
+        kss=positive_float(stiffness_raw, "kss", "cohesive.stiffness"),
+        ktt=positive_float(stiffness_raw, "ktt", "cohesive.stiffness"),
+    )
+
+    damage = CohesiveDamageConfig(
+        normal_strength=positive_float(
+            damage_raw,
+            "normal_strength",
+            "cohesive.damage",
+        ),
+        shear_strength=positive_float(
+            damage_raw,
+            "shear_strength",
+            "cohesive.damage",
+        ),
+        fracture_energy=positive_float(
+            damage_raw,
+            "fracture_energy",
+            "cohesive.damage",
+        ),
+        stabilization=positive_float(
+            damage_raw,
+            "stabilization",
+            "cohesive.damage",
+        ),
+    )
+
+    return MaterialConfig(
+        name=name,
+        density=None,
+        elastic=None,
+        plastic=None,
+        cohesive=CohesiveConfig(
+            stiffness=stiffness,
+            damage=damage,
+        ),
+    )
 
 
 def _parse_solid_section(

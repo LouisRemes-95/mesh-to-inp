@@ -150,6 +150,8 @@ def make_quasi_static_step_with_cloads_lines(
                 f"{instance_name}.{node_id}, {dof}, {format_float(float(value))}"
             )
 
+    lines.extend(make_default_output_lines())
+
     lines.extend(["", "*END STEP"])
 
     return lines
@@ -239,6 +241,21 @@ def make_rigid_body_constraint_lines(
         )
 
     return lines
+
+
+def make_default_output_lines() -> list[str]:
+    return [
+        "",
+        "** --- Output requests ---",
+        "*OUTPUT, FIELD, NUMBER INTERVAL=100",
+        "*ELEMENT OUTPUT",
+        "S, E, PE, PEEQ, STATUS",
+        "*NODE OUTPUT",
+        "U, RF",
+        "*OUTPUT, HISTORY, NUMBER INTERVAL=100",
+        "*ENERGY OUTPUT",
+        "ALLIE, ALLSE, ALLPD, ALLKE, ALLWK",
+    ]
 
 
 def make_comment(title: str) -> list[str]:

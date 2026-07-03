@@ -1,9 +1,9 @@
 job:
-  name: mmg_remesh_x4_S_V1
-  output: mmg_remesh_x4_S_V1.inp
+  name: mmg_remesh_x4_S
+  output: mmg_remesh_x4_S.inp
 
 mesh:
-  input: mmg_remesh_x4_S_V1.mesh
+  input: mmg_remesh_x4_S.mesh
 
 materials:
   - name: Bulk

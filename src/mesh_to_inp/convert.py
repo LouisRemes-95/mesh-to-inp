@@ -18,8 +18,10 @@ from mesh_to_inp.loading import (
     compute_face_resultants,
     compute_boundary_tributary_areas,
     compute_nodal_forces_from_face_resultants,
-    print_nodal_force_summary,
 )
+
+from mesh_to_inp.constraints import make_default_rigid_body_constraints
+
 
 def convert(case: CaseConfig) -> None:
     """
@@ -46,6 +48,7 @@ def convert(case: CaseConfig) -> None:
 
     out_points, out_tetras, region_lut = build_region_separated_mesh(mesh, key)
     tris_regions = extract_interface_triangles(mesh, key)
+    rigid_body_constraints = make_default_rigid_body_constraints(out_points)
 
     face_resultants = compute_face_resultants(out_points, case.macro_stress)
 
@@ -90,6 +93,7 @@ def convert(case: CaseConfig) -> None:
         make_quasi_static_step_with_cloads_lines(
             nodal_forces=nodal_forces,
             step=case.step,
+            rigid_body_constraints=rigid_body_constraints,
         )
     )
 

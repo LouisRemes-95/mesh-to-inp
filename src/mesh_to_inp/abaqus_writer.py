@@ -103,6 +103,7 @@ def make_assembly_lines(
 def make_quasi_static_step_with_cloads_lines(
     nodal_forces,
     step,
+    rigid_body_constraints=None,
     instance_name: str = "PART-1",
     force_tolerance: float = 1.0e-12,
 ) -> list[str]:
@@ -122,6 +123,13 @@ def make_quasi_static_step_with_cloads_lines(
     ]
 
     lines.extend(make_time_incrementation_controls_lines(step.controls))
+
+    lines.extend(
+        make_rigid_body_constraint_lines(
+            rigid_body_constraints,
+            instance_name=instance_name,
+        )
+    )
 
     lines.extend(
         [
@@ -207,6 +215,30 @@ def _format_optional_abaqus_values(values: list[object | None]) -> str:
         formatted.pop()
 
     return ", ".join(formatted)
+
+
+def make_rigid_body_constraint_lines(
+    constraints,
+    instance_name: str = "PART-1",
+) -> list[str]:
+    if not constraints:
+        return []
+
+    lines = [
+        "",
+        "** --- Minimal rigid body constraints ---",
+        "*BOUNDARY",
+    ]
+
+    for constraint in constraints:
+        lines.append(
+            f"{instance_name}.{constraint.node_id}, "
+            f"{constraint.first_dof}, "
+            f"{constraint.last_dof}, "
+            f"{format_float(constraint.value)}"
+        )
+
+    return lines
 
 
 def make_comment(title: str) -> list[str]:

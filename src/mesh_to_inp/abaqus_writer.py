@@ -201,7 +201,7 @@ def make_step_with_cloads_lines(
     else:
         raise ValueError(f"Unsupported step type: {step.type}")
 
-    lines.extend(make_time_incrementation_controls_lines(step.controls))
+    lines.extend(make_step_control_lines(step.controls))
 
     lines.extend(
         make_rigid_body_constraint_lines(
@@ -235,47 +235,45 @@ def make_step_with_cloads_lines(
 
     return lines
 
-def make_time_incrementation_controls_lines(controls) -> list[str]:
+def make_step_control_lines(controls) -> list[str]:
     if controls is None:
         return []
 
-    time_controls = controls.time_incrementation
+    lines: list[str] = []
 
-    if time_controls is None:
-        return []
+    if controls.analysis == "discontinuous":
+        lines.extend(
+            [
+                "",
+                "** --- Discontinuous analysis controls ---",
+                "*CONTROLS, ANALYSIS=DISCONTINUOUS",
+            ]
+        )
 
-    if not time_controls.enabled:
-        return []
+    if (
+        controls.time_incrementation is not None
+        and controls.time_incrementation.enabled
+    ):
+        lines.extend(
+            [
+                "",
+                "** --- Time incrementation controls ---",
+                "*CONTROLS, PARAMETERS=TIME INCREMENTATION",
+                _format_optional_abaqus_values(
+                    controls.time_incrementation.values
+                ),
+            ]
+        )
 
-    line_1 = [
-        time_controls.max_equilibrium_iterations,
-        time_controls.cutback_after_equilibrium_iterations,
-        time_controls.max_attempts_per_increment,
-        time_controls.max_severe_discontinuity_iterations,
-        time_controls.severe_discontinuity_iterations_for_increase,
-    ]
-
-    line_2 = [
-        time_controls.cutback_factor_after_divergence,
-        time_controls.cutback_factor_slow_convergence,
-        time_controls.cutback_factor_too_many_iterations,
-        time_controls.increase_factor_after_easy_increments,
-        time_controls.max_increment_increase_factor,
-    ]
-
-    lines = [
-        "",
-        "** --- Time incrementation controls ---",
-        "*CONTROLS, PARAMETERS=TIME INCREMENTATION",
-    ]
-
-    if any(value is not None for value in line_1):
-        lines.append(_format_optional_abaqus_values(line_1))
-
-    if any(value is not None for value in line_2):
-        if not any(value is not None for value in line_1):
-            lines.append("")
-        lines.append(_format_optional_abaqus_values(line_2))
+    if controls.line_search is not None and controls.line_search.enabled:
+        lines.extend(
+            [
+                "",
+                "** --- Line search controls ---",
+                "*CONTROLS, PARAMETERS=LINE SEARCH",
+                _format_optional_abaqus_values(controls.line_search.values),
+            ]
+        )
 
     return lines
 

@@ -94,21 +94,20 @@ class StepIncrementConfig:
 @dataclass(frozen=True)
 class TimeIncrementationControlsConfig:
     enabled: bool
-    max_equilibrium_iterations: int | None
-    cutback_after_equilibrium_iterations: int | None
-    max_attempts_per_increment: int | None
-    max_severe_discontinuity_iterations: int | None
-    severe_discontinuity_iterations_for_increase: int | None
-    cutback_factor_after_divergence: float | None
-    cutback_factor_slow_convergence: float | None
-    cutback_factor_too_many_iterations: float | None
-    increase_factor_after_easy_increments: float | None
-    max_increment_increase_factor: float | None
+    values: list[int | float | None]
+
+
+@dataclass(frozen=True)
+class LineSearchControlsConfig:
+    enabled: bool
+    values: list[int | float | None]
 
 
 @dataclass(frozen=True)
 class StepControlsConfig:
+    analysis: str | None
     time_incrementation: TimeIncrementationControlsConfig | None
+    line_search: LineSearchControlsConfig | None
 
 
 @dataclass(frozen=True)
@@ -573,78 +572,97 @@ def _parse_step(raw: Any) -> StepConfig:
 
 def _parse_step_controls(raw: Any) -> StepControlsConfig:
     if raw is None:
-        return StepControlsConfig(time_incrementation=None)
+        return StepControlsConfig(
+            analysis=None,
+            time_incrementation=None,
+            line_search=None,
+        )
 
     if not isinstance(raw, dict):
         raise UserError("step.controls must be a dictionary.")
 
-    time_raw = raw.get("time_incrementation")
+    analysis = raw.get("analysis")
 
-    if time_raw is None:
-        return StepControlsConfig(time_incrementation=None)
+    if analysis is not None:
+        if not isinstance(analysis, str) or not analysis.strip():
+            raise UserError("step.controls.analysis must be a non-empty string.")
 
-    if not isinstance(time_raw, dict):
-        raise UserError("step.controls.time_incrementation must be a dictionary.")
+        analysis = analysis.strip().lower()
 
-    enabled = time_raw.get("enabled", True)
+        if analysis != "discontinuous":
+            raise UserError(
+                "step.controls.analysis currently only supports 'discontinuous'."
+            )
 
-    if not isinstance(enabled, bool):
-        raise UserError("step.controls.time_incrementation.enabled must be true or false.")
+    time_incrementation = _parse_raw_control_values(
+        raw=raw.get("time_incrementation"),
+        label="step.controls.time_incrementation",
+        expected_length=11,
+        config_type=TimeIncrementationControlsConfig,
+    )
+
+    line_search = _parse_raw_control_values(
+        raw=raw.get("line_search"),
+        label="step.controls.line_search",
+        expected_length=5,
+        config_type=LineSearchControlsConfig,
+    )
 
     return StepControlsConfig(
-        time_incrementation=TimeIncrementationControlsConfig(
-            enabled=enabled,
-            max_equilibrium_iterations=_optional_positive_int(
-                time_raw,
-                "max_equilibrium_iterations",
-                "step.controls.time_incrementation.max_equilibrium_iterations",
-            ),
-            cutback_after_equilibrium_iterations=_optional_positive_int(
-                time_raw,
-                "cutback_after_equilibrium_iterations",
-                "step.controls.time_incrementation.cutback_after_equilibrium_iterations",
-            ),
-            max_attempts_per_increment=_optional_positive_int(
-                time_raw,
-                "max_attempts_per_increment",
-                "step.controls.time_incrementation.max_attempts_per_increment",
-            ),
-            max_severe_discontinuity_iterations=_optional_positive_int(
-                time_raw,
-                "max_severe_discontinuity_iterations",
-                "step.controls.time_incrementation.max_severe_discontinuity_iterations",
-            ),
-            severe_discontinuity_iterations_for_increase=_optional_positive_int(
-                time_raw,
-                "severe_discontinuity_iterations_for_increase",
-                "step.controls.time_incrementation.severe_discontinuity_iterations_for_increase",
-            ),
-            cutback_factor_after_divergence=_optional_positive_number(
-                time_raw,
-                "cutback_factor_after_divergence",
-                "step.controls.time_incrementation.cutback_factor_after_divergence",
-            ),
-            cutback_factor_slow_convergence=_optional_positive_number(
-                time_raw,
-                "cutback_factor_slow_convergence",
-                "step.controls.time_incrementation.cutback_factor_slow_convergence",
-            ),
-            cutback_factor_too_many_iterations=_optional_positive_number(
-                time_raw,
-                "cutback_factor_too_many_iterations",
-                "step.controls.time_incrementation.cutback_factor_too_many_iterations",
-            ),
-            increase_factor_after_easy_increments=_optional_positive_number(
-                time_raw,
-                "increase_factor_after_easy_increments",
-                "step.controls.time_incrementation.increase_factor_after_easy_increments",
-            ),
-            max_increment_increase_factor=_optional_positive_number(
-                time_raw,
-                "max_increment_increase_factor",
-                "step.controls.time_incrementation.max_increment_increase_factor",
-            ),
+        analysis=analysis,
+        time_incrementation=time_incrementation,
+        line_search=line_search,
+    )
+
+
+def _parse_raw_control_values(
+    raw: Any,
+    label: str,
+    expected_length: int,
+    config_type,
+):
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        raise UserError(f"{label} must be a dictionary.")
+
+    enabled = raw.get("enabled", True)
+
+    if not isinstance(enabled, bool):
+        raise UserError(f"{label}.enabled must be true or false.")
+
+    values = raw.get("values")
+
+    if values is None:
+        return config_type(enabled=enabled, values=[])
+
+    if not isinstance(values, list):
+        raise UserError(f"{label}.values must be a list.")
+
+    if len(values) > expected_length:
+        raise UserError(
+            f"{label}.values must contain at most {expected_length} entries."
         )
+
+    parsed_values: list[int | float | None] = []
+
+    for i, value in enumerate(values):
+        if value is None:
+            parsed_values.append(None)
+            continue
+
+        if not isinstance(value, int | float):
+            raise UserError(f"{label}.values[{i}] must be a number or null.")
+
+        parsed_values.append(value)
+
+    while len(parsed_values) < expected_length:
+        parsed_values.append(None)
+
+    return config_type(
+        enabled=enabled,
+        values=parsed_values,
     )
 
 
@@ -702,46 +720,6 @@ def _positive_int(
         raise UserError(f"{label} must be an integer.")
 
     if value <= 0:
-        raise UserError(f"{label} must be > 0.")
-
-    return value
-
-
-def _optional_positive_int(
-    raw: dict[str, Any],
-    field: str,
-    label: str,
-) -> int | None:
-    value = raw.get(field)
-
-    if value is None:
-        return None
-
-    if not isinstance(value, int):
-        raise UserError(f"{label} must be an integer.")
-
-    if value <= 0:
-        raise UserError(f"{label} must be > 0.")
-
-    return value
-
-
-def _optional_positive_number(
-    raw: dict[str, Any],
-    field: str,
-    label: str,
-) -> float | None:
-    value = raw.get(field)
-
-    if value is None:
-        return None
-
-    if not isinstance(value, int | float):
-        raise UserError(f"{label} must be a number.")
-
-    value = float(value)
-
-    if value <= 0.0:
         raise UserError(f"{label} must be > 0.")
 
     return value

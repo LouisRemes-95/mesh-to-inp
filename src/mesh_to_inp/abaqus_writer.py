@@ -61,22 +61,66 @@ def make_material_lines(materials) -> list[str]:
     for material in materials:
         lines.extend(make_subcomment(material.name))
 
-        lines.extend(
-            [
-                f"*MATERIAL, NAME={material.name}",
-                "*DENSITY",
-                f"{format_float(material.density)}",
-                "*ELASTIC",
-                (
-                    f"{format_float(material.elastic.E)}, "
-                    f"{format_float(material.elastic.nu)}"
-                ),
-                "*PLASTIC",
-                f"{format_float(material.plastic.yield_stress)}, 0.",
-            ]
-        )
+        if material.cohesive is not None:
+            lines.extend(_make_cohesive_material_lines(material))
+        else:
+            lines.extend(_make_bulk_material_lines(material))
 
     return lines
+
+
+def _make_bulk_material_lines(material) -> list[str]:
+    if material.density is None:
+        raise ValueError(f"Bulk material '{material.name}' is missing density.")
+
+    if material.elastic is None:
+        raise ValueError(f"Bulk material '{material.name}' is missing elastic data.")
+
+    if material.plastic is None:
+        raise ValueError(f"Bulk material '{material.name}' is missing plastic data.")
+
+    return [
+        f"*MATERIAL, NAME={material.name}",
+        "*DENSITY",
+        f"{format_float(material.density)}",
+        "*ELASTIC",
+        (
+            f"{format_float(material.elastic.E)}, "
+            f"{format_float(material.elastic.nu)}"
+        ),
+        "*PLASTIC",
+        f"{format_float(material.plastic.yield_stress)}, 0.",
+    ]
+
+
+def _make_cohesive_material_lines(material) -> list[str]:
+    cohesive = material.cohesive
+
+    if cohesive is None:
+        raise ValueError(f"Cohesive material '{material.name}' is missing cohesive data.")
+
+    stiffness = cohesive.stiffness
+    damage = cohesive.damage
+
+    return [
+        f"*MATERIAL, NAME={material.name}",
+        "*ELASTIC, TYPE=TRACTION",
+        (
+            f"{format_float(stiffness.knn)}, "
+            f"{format_float(stiffness.kss)}, "
+            f"{format_float(stiffness.ktt)}"
+        ),
+        "*DAMAGE INITIATION, CRITERION=QUADS",
+        (
+            f"{format_float(damage.normal_strength)}, "
+            f"{format_float(damage.shear_strength)}, "
+            f"{format_float(damage.shear_strength)}"
+        ),
+        "*DAMAGE EVOLUTION, TYPE=ENERGY",
+        f"{format_float(damage.fracture_energy)}",
+        "*DAMAGE STABILIZATION",
+        f"{format_float(damage.stabilization)}",
+    ]
 
 
 def make_solid_section_lines(section) -> list[str]:
@@ -86,6 +130,19 @@ def make_solid_section_lines(section) -> list[str]:
         f"ELSET={section.elset}, "
         f"MATERIAL={section.material}",
     ]
+
+
+def make_cohesive_section_lines(section) -> list[str]:
+    return [
+        *make_comment("COHESIVE SECTION DEFINITIONS"),
+        (
+            "*COHESIVE SECTION, "
+            f"ELSET={section.elset}, "
+            f"MATERIAL={section.material}, "
+            f"RESPONSE={section.response}"
+        ),
+    ]
+
 
 def make_assembly_lines(
     part_name: str = "PART",
@@ -100,7 +157,7 @@ def make_assembly_lines(
     ]
 
 
-def make_quasi_static_step_with_cloads_lines(
+def make_step_with_cloads_lines(
     nodal_forces,
     step,
     rigid_body_constraints=None,
@@ -113,14 +170,36 @@ def make_quasi_static_step_with_cloads_lines(
     lines: list[str] = [
         *make_comment("STEP"),
         f"*STEP, NAME={step.name}, NLGEOM={nlgeom}, INC={inc.max_number}",
-        "*STATIC",
-        (
-            f"{format_float(inc.initial)}, "
-            f"{format_float(inc.total)}, "
-            f"{format_float(inc.minimum)}, "
-            f"{format_float(inc.maximum)}"
-        ),
     ]
+
+    if step.type == "quasi_static":
+        lines.extend(
+            [
+                "*STATIC",
+                (
+                    f"{format_float(inc.initial)}, "
+                    f"{format_float(inc.total)}, "
+                    f"{format_float(inc.minimum)}, "
+                    f"{format_float(inc.maximum)}"
+                ),
+            ]
+        )
+
+    elif step.type == "dynamic_implicit":
+        lines.extend(
+            [
+                "*DYNAMIC, APPLICATION=TRANSIENT FIDELITY",
+                (
+                    f"{format_float(inc.initial)}, "
+                    f"{format_float(inc.total)}, "
+                    f"{format_float(inc.minimum)}, "
+                    f"{format_float(inc.maximum)}"
+                ),
+            ]
+        )
+
+    else:
+        raise ValueError(f"Unsupported step type: {step.type}")
 
     lines.extend(make_time_incrementation_controls_lines(step.controls))
 
@@ -155,7 +234,6 @@ def make_quasi_static_step_with_cloads_lines(
     lines.extend(["", "*END STEP"])
 
     return lines
-
 
 def make_time_incrementation_controls_lines(controls) -> list[str]:
     if controls is None:

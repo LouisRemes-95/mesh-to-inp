@@ -11,8 +11,9 @@ from mesh_to_inp.abaqus_writer import (
     find_next_element_id,
     make_material_lines,
     make_solid_section_lines,
+    make_cohesive_section_lines,
     make_assembly_lines,
-    make_quasi_static_step_with_cloads_lines,
+    make_step_with_cloads_lines,
 )
 from mesh_to_inp.loading import (
     compute_face_resultants,
@@ -83,6 +84,9 @@ def convert(case: CaseConfig) -> None:
     if case.solid_section:
         lines.extend(make_solid_section_lines(case.solid_section))
 
+    if case.cohesive_section:
+        lines.extend(make_cohesive_section_lines(case.cohesive_section))
+
     lines.extend(["*END PART"])
 
     if case.materials:
@@ -90,7 +94,7 @@ def convert(case: CaseConfig) -> None:
 
     lines.extend(make_assembly_lines())
     lines.extend(
-        make_quasi_static_step_with_cloads_lines(
+        make_step_with_cloads_lines(
             nodal_forces=nodal_forces,
             step=case.step,
             rigid_body_constraints=rigid_body_constraints,

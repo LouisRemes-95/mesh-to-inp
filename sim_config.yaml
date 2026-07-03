@@ -1,9 +1,9 @@
 job:
-  name: mmg_remesh_x4_S
-  output: mmg_remesh_x4_S.inp
+  name: two_cubes_x_1mm_regions
+  output: two_cubes_x_1mm_regions.inp
 
 mesh:
-  input: mmg_remesh_x4_S.mesh
+  input: two_cubes_x_1mm_regions.mesh
 
 materials:
   - name: Bulk
@@ -32,6 +32,11 @@ sections:
     elset: TETRA
     material: Bulk
 
+  cohesive:
+    elset: COHESIVE
+    material: Interface
+    response: TRACTION SEPARATION
+
 loading:
   macro_stress:
     sxx: 100.0
@@ -43,7 +48,7 @@ loading:
 
 step:
   name: MacroStressLoading
-  type: quasi_static
+  type: dynamic_implicit
   nlgeom: true
   increments:
     initial: 0.01

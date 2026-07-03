@@ -66,6 +66,13 @@ class SolidSectionConfig:
 
 
 @dataclass(frozen=True)
+class CohesiveSectionConfig:
+    elset: str
+    material: str
+    response: str
+
+
+@dataclass(frozen=True)
 class MacroStressConfig:
     sxx: float
     syy: float
@@ -118,7 +125,8 @@ class CaseConfig:
     job: JobConfig
     mesh: MeshConfig
     materials: list[MaterialConfig]
-    solid_section: SolidSectionConfig
+    solid_section: SolidSectionConfig | None
+    cohesive_section: CohesiveSectionConfig | None
     macro_stress: MacroStressConfig
     step: StepConfig
 
@@ -165,15 +173,32 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
 
     if input_path is None:
         raise UserError("Missing required field: mesh.input")
-    
+
     materials = _parse_materials(raw.get("materials"))
-    solid_section = _parse_solid_section(raw.get("sections"), materials)
+
+    sections_raw = raw.get("sections", {})
+
+    if sections_raw is None:
+        sections_raw = {}
+
+    if not isinstance(sections_raw, dict):
+        raise UserError("'sections' must be a dictionary.")
+
+    solid_section = _parse_solid_section(
+        sections_raw.get("solid"),
+        materials,
+    )
+    cohesive_section = _parse_cohesive_section(
+        sections_raw.get("cohesive"),
+        materials,
+    )
+
     macro_stress = _parse_macro_stress(raw.get("loading"))
     step = _parse_step(raw.get("step"))
 
     return CaseConfig(
         job=JobConfig(
-            name=job_name,
+            name=job_name.strip(),
             output=(base_dir / output_path).resolve(),
         ),
         mesh=MeshConfig(
@@ -181,6 +206,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         ),
         materials=materials,
         solid_section=solid_section,
+        cohesive_section=cohesive_section,
         macro_stress=macro_stress,
         step=step,
     )
@@ -212,9 +238,7 @@ def _parse_materials(raw: Any) -> list[MaterialConfig]:
 
         used_names.add(name)
 
-        has_bulk_data = any(
-            key in item for key in ("density", "elastic", "plastic")
-        )
+        has_bulk_data = any(key in item for key in ("density", "elastic", "plastic"))
         has_cohesive_data = "cohesive" in item
 
         if has_bulk_data and has_cohesive_data:
@@ -241,7 +265,9 @@ def _parse_bulk_material(name: str, item: dict[str, Any]) -> MaterialConfig:
     if not isinstance(density, int | float):
         raise UserError(f"Material '{name}' has invalid 'density'.")
 
-    if density <= 0:
+    density = float(density)
+
+    if density <= 0.0:
         raise UserError(f"Material '{name}' must have density > 0.")
 
     if not isinstance(elastic_raw, dict):
@@ -256,7 +282,10 @@ def _parse_bulk_material(name: str, item: dict[str, Any]) -> MaterialConfig:
     if not isinstance(nu, int | float):
         raise UserError(f"Material '{name}' has invalid elastic.nu.")
 
-    if E <= 0:
+    E = float(E)
+    nu = float(nu)
+
+    if E <= 0.0:
         raise UserError(f"Material '{name}' must have elastic.E > 0.")
 
     if not (-1.0 < nu < 0.5):
@@ -270,14 +299,16 @@ def _parse_bulk_material(name: str, item: dict[str, Any]) -> MaterialConfig:
     if not isinstance(yield_stress, int | float):
         raise UserError(f"Material '{name}' has invalid plastic.yield_stress.")
 
-    if yield_stress <= 0:
+    yield_stress = float(yield_stress)
+
+    if yield_stress <= 0.0:
         raise UserError(f"Material '{name}' must have plastic.yield_stress > 0.")
 
     return MaterialConfig(
         name=name,
-        density=float(density),
-        elastic=ElasticConfig(E=float(E), nu=float(nu)),
-        plastic=PerfectPlasticConfig(yield_stress=float(yield_stress)),
+        density=density,
+        elastic=ElasticConfig(E=E, nu=nu),
+        plastic=PerfectPlasticConfig(yield_stress=yield_stress),
         cohesive=None,
     )
 
@@ -297,45 +328,44 @@ def _parse_cohesive_material(name: str, item: dict[str, Any]) -> MaterialConfig:
     if not isinstance(damage_raw, dict):
         raise UserError(f"Material '{name}' is missing cohesive.damage.")
 
-    def positive_float(section: dict[str, Any], field: str, label: str) -> float:
-        value = section.get(field)
-
-        if not isinstance(value, int | float):
-            raise UserError(f"Material '{name}' has invalid {label}.{field}.")
-
-        value = float(value)
-
-        if value <= 0.0:
-            raise UserError(f"Material '{name}' must have {label}.{field} > 0.")
-
-        return value
-
     stiffness = CohesiveStiffnessConfig(
-        knn=positive_float(stiffness_raw, "knn", "cohesive.stiffness"),
-        kss=positive_float(stiffness_raw, "kss", "cohesive.stiffness"),
-        ktt=positive_float(stiffness_raw, "ktt", "cohesive.stiffness"),
+        knn=_positive_float(
+            stiffness_raw,
+            "knn",
+            f"Material '{name}' cohesive.stiffness.knn",
+        ),
+        kss=_positive_float(
+            stiffness_raw,
+            "kss",
+            f"Material '{name}' cohesive.stiffness.kss",
+        ),
+        ktt=_positive_float(
+            stiffness_raw,
+            "ktt",
+            f"Material '{name}' cohesive.stiffness.ktt",
+        ),
     )
 
     damage = CohesiveDamageConfig(
-        normal_strength=positive_float(
+        normal_strength=_positive_float(
             damage_raw,
             "normal_strength",
-            "cohesive.damage",
+            f"Material '{name}' cohesive.damage.normal_strength",
         ),
-        shear_strength=positive_float(
+        shear_strength=_positive_float(
             damage_raw,
             "shear_strength",
-            "cohesive.damage",
+            f"Material '{name}' cohesive.damage.shear_strength",
         ),
-        fracture_energy=positive_float(
+        fracture_energy=_positive_float(
             damage_raw,
             "fracture_energy",
-            "cohesive.damage",
+            f"Material '{name}' cohesive.damage.fracture_energy",
         ),
-        stabilization=positive_float(
+        stabilization=_positive_float(
             damage_raw,
             "stabilization",
-            "cohesive.damage",
+            f"Material '{name}' cohesive.damage.stabilization",
         ),
     )
 
@@ -354,35 +384,88 @@ def _parse_cohesive_material(name: str, item: dict[str, Any]) -> MaterialConfig:
 def _parse_solid_section(
     raw: Any,
     materials: list[MaterialConfig],
-) -> SolidSectionConfig:
+) -> SolidSectionConfig | None:
+    if raw is None:
+        return None
+
     if not isinstance(raw, dict):
-        raise UserError("Missing or invalid 'sections' section.")
+        raise UserError("'sections.solid' must be a dictionary.")
 
-    solid_raw = raw.get("solid")
-
-    if not isinstance(solid_raw, dict):
-        raise UserError("Missing or invalid 'sections.solid' section.")
-
-    elset = solid_raw.get("elset")
-    material = solid_raw.get("material")
+    elset = raw.get("elset")
+    material = raw.get("material")
 
     if not isinstance(elset, str) or not elset.strip():
-        raise UserError("Missing or invalid field: sections.solid.elset")
+        raise UserError("'sections.solid.elset' must be a non-empty string.")
 
     if not isinstance(material, str) or not material.strip():
-        raise UserError("Missing or invalid field: sections.solid.material")
+        raise UserError("'sections.solid.material' must be a non-empty string.")
 
-    material_names = {m.name for m in materials}
+    elset = elset.strip()
+    material = material.strip()
 
-    if material not in material_names:
+    known_materials = {m.name: m for m in materials}
+
+    if material not in known_materials:
         raise UserError(
-            f"Section references unknown material '{material}'. "
-            f"Known materials: {sorted(material_names)}"
+            f"sections.solid.material refers to unknown material '{material}'. "
+            f"Known materials: {sorted(known_materials)}"
+        )
+
+    if known_materials[material].cohesive is not None:
+        raise UserError(
+            f"sections.solid.material must refer to a bulk material, not '{material}'."
         )
 
     return SolidSectionConfig(
-        elset=elset.strip(),
-        material=material.strip(),
+        elset=elset,
+        material=material,
+    )
+
+
+def _parse_cohesive_section(
+    raw: Any,
+    materials: list[MaterialConfig],
+) -> CohesiveSectionConfig | None:
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        raise UserError("'sections.cohesive' must be a dictionary.")
+
+    elset = raw.get("elset")
+    material = raw.get("material")
+    response = raw.get("response", "TRACTION SEPARATION")
+
+    if not isinstance(elset, str) or not elset.strip():
+        raise UserError("'sections.cohesive.elset' must be a non-empty string.")
+
+    if not isinstance(material, str) or not material.strip():
+        raise UserError("'sections.cohesive.material' must be a non-empty string.")
+
+    if not isinstance(response, str) or not response.strip():
+        raise UserError("'sections.cohesive.response' must be a non-empty string.")
+
+    elset = elset.strip()
+    material = material.strip()
+    response = response.strip()
+
+    known_materials = {m.name: m for m in materials}
+
+    if material not in known_materials:
+        raise UserError(
+            f"sections.cohesive.material refers to unknown material '{material}'. "
+            f"Known materials: {sorted(known_materials)}"
+        )
+
+    if known_materials[material].cohesive is None:
+        raise UserError(
+            f"sections.cohesive.material must refer to a cohesive material, not '{material}'."
+        )
+
+    return CohesiveSectionConfig(
+        elset=elset,
+        material=material,
+        response=response,
     )
 
 
@@ -395,21 +478,13 @@ def _parse_macro_stress(raw: Any) -> MacroStressConfig:
     if not isinstance(stress_raw, dict):
         raise UserError("Missing or invalid 'loading.macro_stress' section.")
 
-    def get_component(name: str) -> float:
-        value = stress_raw.get(name, 0.0)
-
-        if not isinstance(value, int | float):
-            raise UserError(f"Invalid loading.macro_stress.{name}")
-
-        return float(value)
-
     return MacroStressConfig(
-        sxx=get_component("sxx"),
-        syy=get_component("syy"),
-        szz=get_component("szz"),
-        sxy=get_component("sxy"),
-        sxz=get_component("sxz"),
-        syz=get_component("syz"),
+        sxx=_number(stress_raw, "sxx", default=0.0, label="loading.macro_stress.sxx"),
+        syy=_number(stress_raw, "syy", default=0.0, label="loading.macro_stress.syy"),
+        szz=_number(stress_raw, "szz", default=0.0, label="loading.macro_stress.szz"),
+        sxy=_number(stress_raw, "sxy", default=0.0, label="loading.macro_stress.sxy"),
+        sxz=_number(stress_raw, "sxz", default=0.0, label="loading.macro_stress.sxz"),
+        syz=_number(stress_raw, "syz", default=0.0, label="loading.macro_stress.syz"),
     )
 
 
@@ -422,10 +497,12 @@ def _parse_step(raw: Any) -> StepConfig:
 
     step_type = raw.get("type", "quasi_static")
 
-    if step_type != "quasi_static":
+    supported_step_types = {"quasi_static", "dynamic_implicit"}
+
+    if step_type not in supported_step_types:
         raise UserError(
             f"Unsupported step.type '{step_type}'. "
-            "Currently only 'quasi_static' is supported."
+            f"Supported values are: {sorted(supported_step_types)}"
         )
 
     name = raw.get("name", "MacroStressLoading")
@@ -441,36 +518,37 @@ def _parse_step(raw: Any) -> StepConfig:
     if not isinstance(increments_raw, dict):
         raise UserError("step.increments must be a dictionary.")
 
-    def get_float(name: str, default: float) -> float:
-        value = increments_raw.get(name, default)
-
-        if not isinstance(value, int | float):
-            raise UserError(f"step.increments.{name} must be a number.")
-
-        value = float(value)
-
-        if value <= 0.0:
-            raise UserError(f"step.increments.{name} must be > 0.")
-
-        return value
-
-    def get_int(name: str, default: int) -> int:
-        value = increments_raw.get(name, default)
-
-        if not isinstance(value, int):
-            raise UserError(f"step.increments.{name} must be an integer.")
-
-        if value <= 0:
-            raise UserError(f"step.increments.{name} must be > 0.")
-
-        return value
-
     increments = StepIncrementConfig(
-        initial=get_float("initial", 0.01),
-        total=get_float("total", 1.0),
-        minimum=get_float("minimum", 1.0e-8),
-        maximum=get_float("maximum", 0.1),
-        max_number=get_int("max_number", 100000),
+        initial=_positive_number(
+            increments_raw,
+            "initial",
+            default=0.01,
+            label="step.increments.initial",
+        ),
+        total=_positive_number(
+            increments_raw,
+            "total",
+            default=1.0,
+            label="step.increments.total",
+        ),
+        minimum=_positive_number(
+            increments_raw,
+            "minimum",
+            default=1.0e-8,
+            label="step.increments.minimum",
+        ),
+        maximum=_positive_number(
+            increments_raw,
+            "maximum",
+            default=0.1,
+            label="step.increments.maximum",
+        ),
+        max_number=_positive_int(
+            increments_raw,
+            "max_number",
+            default=100000,
+            label="step.increments.max_number",
+        ),
     )
 
     if increments.minimum > increments.initial:
@@ -513,64 +591,157 @@ def _parse_step_controls(raw: Any) -> StepControlsConfig:
     if not isinstance(enabled, bool):
         raise UserError("step.controls.time_incrementation.enabled must be true or false.")
 
-    def optional_int(field: str) -> int | None:
-        value = time_raw.get(field)
-
-        if value is None:
-            return None
-
-        if not isinstance(value, int):
-            raise UserError(f"step.controls.time_incrementation.{field} must be an integer.")
-
-        if value <= 0:
-            raise UserError(f"step.controls.time_incrementation.{field} must be > 0.")
-
-        return value
-
-    def optional_float(field: str) -> float | None:
-        value = time_raw.get(field)
-
-        if value is None:
-            return None
-
-        if not isinstance(value, int | float):
-            raise UserError(f"step.controls.time_incrementation.{field} must be a number.")
-
-        value = float(value)
-
-        if value <= 0.0:
-            raise UserError(f"step.controls.time_incrementation.{field} must be > 0.")
-
-        return value
-
     return StepControlsConfig(
         time_incrementation=TimeIncrementationControlsConfig(
             enabled=enabled,
-            max_equilibrium_iterations=optional_int("max_equilibrium_iterations"),
-            cutback_after_equilibrium_iterations=optional_int(
-                "cutback_after_equilibrium_iterations"
+            max_equilibrium_iterations=_optional_positive_int(
+                time_raw,
+                "max_equilibrium_iterations",
+                "step.controls.time_incrementation.max_equilibrium_iterations",
             ),
-            max_attempts_per_increment=optional_int("max_attempts_per_increment"),
-            max_severe_discontinuity_iterations=optional_int(
-                "max_severe_discontinuity_iterations"
+            cutback_after_equilibrium_iterations=_optional_positive_int(
+                time_raw,
+                "cutback_after_equilibrium_iterations",
+                "step.controls.time_incrementation.cutback_after_equilibrium_iterations",
             ),
-            severe_discontinuity_iterations_for_increase=optional_int(
-                "severe_discontinuity_iterations_for_increase"
+            max_attempts_per_increment=_optional_positive_int(
+                time_raw,
+                "max_attempts_per_increment",
+                "step.controls.time_incrementation.max_attempts_per_increment",
             ),
-            cutback_factor_after_divergence=optional_float(
-                "cutback_factor_after_divergence"
+            max_severe_discontinuity_iterations=_optional_positive_int(
+                time_raw,
+                "max_severe_discontinuity_iterations",
+                "step.controls.time_incrementation.max_severe_discontinuity_iterations",
             ),
-            cutback_factor_slow_convergence=optional_float(
-                "cutback_factor_slow_convergence"
+            severe_discontinuity_iterations_for_increase=_optional_positive_int(
+                time_raw,
+                "severe_discontinuity_iterations_for_increase",
+                "step.controls.time_incrementation.severe_discontinuity_iterations_for_increase",
             ),
-            cutback_factor_too_many_iterations=optional_float(
-                "cutback_factor_too_many_iterations"
+            cutback_factor_after_divergence=_optional_positive_number(
+                time_raw,
+                "cutback_factor_after_divergence",
+                "step.controls.time_incrementation.cutback_factor_after_divergence",
             ),
-            increase_factor_after_easy_increments=optional_float(
-                "increase_factor_after_easy_increments"
+            cutback_factor_slow_convergence=_optional_positive_number(
+                time_raw,
+                "cutback_factor_slow_convergence",
+                "step.controls.time_incrementation.cutback_factor_slow_convergence",
             ),
-            max_increment_increase_factor=optional_float(
-                "max_increment_increase_factor"
+            cutback_factor_too_many_iterations=_optional_positive_number(
+                time_raw,
+                "cutback_factor_too_many_iterations",
+                "step.controls.time_incrementation.cutback_factor_too_many_iterations",
+            ),
+            increase_factor_after_easy_increments=_optional_positive_number(
+                time_raw,
+                "increase_factor_after_easy_increments",
+                "step.controls.time_incrementation.increase_factor_after_easy_increments",
+            ),
+            max_increment_increase_factor=_optional_positive_number(
+                time_raw,
+                "max_increment_increase_factor",
+                "step.controls.time_incrementation.max_increment_increase_factor",
             ),
         )
     )
+
+
+def _number(
+    raw: dict[str, Any],
+    field: str,
+    default: float,
+    label: str,
+) -> float:
+    value = raw.get(field, default)
+
+    if not isinstance(value, int | float):
+        raise UserError(f"{label} must be a number.")
+
+    return float(value)
+
+
+def _positive_number(
+    raw: dict[str, Any],
+    field: str,
+    default: float,
+    label: str,
+) -> float:
+    value = _number(raw, field, default, label)
+
+    if value <= 0.0:
+        raise UserError(f"{label} must be > 0.")
+
+    return value
+
+
+def _positive_float(raw: dict[str, Any], field: str, label: str) -> float:
+    value = raw.get(field)
+
+    if not isinstance(value, int | float):
+        raise UserError(f"{label} must be a number.")
+
+    value = float(value)
+
+    if value <= 0.0:
+        raise UserError(f"{label} must be > 0.")
+
+    return value
+
+
+def _positive_int(
+    raw: dict[str, Any],
+    field: str,
+    default: int,
+    label: str,
+) -> int:
+    value = raw.get(field, default)
+
+    if not isinstance(value, int):
+        raise UserError(f"{label} must be an integer.")
+
+    if value <= 0:
+        raise UserError(f"{label} must be > 0.")
+
+    return value
+
+
+def _optional_positive_int(
+    raw: dict[str, Any],
+    field: str,
+    label: str,
+) -> int | None:
+    value = raw.get(field)
+
+    if value is None:
+        return None
+
+    if not isinstance(value, int):
+        raise UserError(f"{label} must be an integer.")
+
+    if value <= 0:
+        raise UserError(f"{label} must be > 0.")
+
+    return value
+
+
+def _optional_positive_number(
+    raw: dict[str, Any],
+    field: str,
+    label: str,
+) -> float | None:
+    value = raw.get(field)
+
+    if value is None:
+        return None
+
+    if not isinstance(value, int | float):
+        raise UserError(f"{label} must be a number.")
+
+    value = float(value)
+
+    if value <= 0.0:
+        raise UserError(f"{label} must be > 0.")
+
+    return value

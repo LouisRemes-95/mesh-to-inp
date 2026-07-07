@@ -101,5 +101,10 @@ def convert(case: CaseConfig) -> None:
         )
     )
 
+    clean_lines = [
+        line if line.strip() else "**"
+        for line in lines
+    ]
+
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+        f.write("\n".join(clean_lines))

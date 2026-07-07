@@ -104,22 +104,22 @@ def _make_cohesive_material_lines(material) -> list[str]:
 
     return [
         f"*MATERIAL, NAME={material.name}",
-        "*ELASTIC, TYPE=TRACTION",
-        (
-            f"{format_float(stiffness.knn)}, "
-            f"{format_float(stiffness.kss)}, "
-            f"{format_float(stiffness.ktt)}"
-        ),
-        "*DAMAGE INITIATION, CRITERION=QUADS",
+        "*DAMAGE INITIATION, CRITERION=MAXS",
         (
             f"{format_float(damage.normal_strength)}, "
             f"{format_float(damage.shear_strength)}, "
             f"{format_float(damage.shear_strength)}"
         ),
         "*DAMAGE EVOLUTION, TYPE=ENERGY",
-        f"{format_float(damage.fracture_energy)}",
+        f"{format_float(damage.fracture_energy)},",
         "*DAMAGE STABILIZATION",
         f"{format_float(damage.stabilization)}",
+        "*ELASTIC, TYPE=TRACTION",
+        (
+            f"{format_float(stiffness.knn)}, "
+            f"{format_float(stiffness.kss)}, "
+            f"{format_float(stiffness.ktt)}"
+        ),
     ]
 
 
@@ -129,6 +129,7 @@ def make_solid_section_lines(section) -> list[str]:
         "*SOLID SECTION, "
         f"ELSET={section.elset}, "
         f"MATERIAL={section.material}",
+        ",",
     ]
 
 
@@ -141,6 +142,7 @@ def make_cohesive_section_lines(section) -> list[str]:
             f"MATERIAL={section.material}, "
             f"RESPONSE={section.response}"
         ),
+        ",",
     ]
 
 
@@ -188,12 +190,11 @@ def make_step_with_cloads_lines(
     elif step.type == "dynamic_implicit":
         lines.extend(
             [
-                "*DYNAMIC, APPLICATION=TRANSIENT FIDELITY",
+                "*DYNAMIC, APPLICATION=QUASI-STATIC, INITIAL=NO",
                 (
                     f"{format_float(inc.initial)}, "
                     f"{format_float(inc.total)}, "
-                    f"{format_float(inc.minimum)}, "
-                    f"{format_float(inc.maximum)}"
+                    f"{format_float(inc.minimum)}"
                 ),
             ]
         )
@@ -240,6 +241,14 @@ def make_step_control_lines(controls) -> list[str]:
         return []
 
     lines: list[str] = []
+
+    lines.extend(
+        [
+            "",
+            "** --- Step controls ---",
+            "*CONTROLS, RESET",
+        ]
+    )
 
     if controls.analysis == "discontinuous":
         lines.extend(
@@ -288,9 +297,6 @@ def _format_optional_abaqus_values(values: list[object | None]) -> str:
             formatted.append(format_float(value))
         else:
             formatted.append(str(value))
-
-    while formatted and formatted[-1] == "":
-        formatted.pop()
 
     return ", ".join(formatted)
 

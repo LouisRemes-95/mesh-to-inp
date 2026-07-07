@@ -39,7 +39,7 @@ sections:
 
 loading:
   macro_stress:
-    sxx: 100.0
+    sxx: 10.0
     syy: 0.0
     szz: 0.0
     sxy: 0.0

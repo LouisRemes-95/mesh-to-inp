@@ -21,32 +21,48 @@ def read_mesh_safe(path: Path):
         raise UserError(f"File is not a valid mesh or unsupported format: {path}")
 
 
-def build_region_separated_mesh(mesh: meshio.Mesh, key: str):
+def build_region_separated_mesh(mesh, key: str):
+    points = mesh.points
     tetra_cells = mesh.cells_dict["tetra"]
     tetra_regions = mesh.cell_data_dict[key]["tetra"]
 
+    unique_regions = sorted(set(int(region) for region in tetra_regions))
+
     region_lut: dict[int, np.ndarray] = {}
-    points_chunks = []
-    tetras_chunks = []
-    offset = 0
+    out_points: list[np.ndarray] = []
 
-    for region_id in np.unique(tetra_regions):
-        region_mask = tetra_regions == region_id
-        region_tetras = tetra_cells[region_mask, :]
-        region_points = np.unique(region_tetras.ravel())
+    for region in unique_regions:
+        used_nodes = np.unique(tetra_cells[tetra_regions == region].ravel())
 
-        lut = np.full(mesh.points.shape[0], 0, dtype=smallest_uint_dtype(region_points.size + offset - 1))
-        lut[region_points] = np.arange(region_points.size) + offset
-        region_lut[int(region_id)] = lut
+        lut = np.full(len(points), -1, dtype=int)
 
-        points_chunks.append(mesh.points[region_points, :])
-        tetras_chunks.append(lut[region_tetras].astype(np.int64))
+        for original_node_id in used_nodes:
+            lut[original_node_id] = len(out_points)
+            out_points.append(points[original_node_id])
 
-        offset += region_points.size
+        region_lut[region] = lut
 
-    out_points = np.vstack(points_chunks)
-    out_tetras = np.vstack(tetras_chunks)
-    return out_points, out_tetras, region_lut
+    out_tetras: list[np.ndarray] = []
+    original_to_output_element_id = np.full(len(tetra_cells), -1, dtype=int)
+
+    for original_tet_id, tet in enumerate(tetra_cells):
+        region = int(tetra_regions[original_tet_id])
+        mapped_tet = region_lut[region][tet]
+
+        if np.any(mapped_tet < 0):
+            raise ValueError(
+                f"Failed to map tetra {original_tet_id} for region {region}."
+            )
+
+        out_tetras.append(mapped_tet)
+        original_to_output_element_id[original_tet_id] = len(out_tetras)
+
+    return (
+        np.asarray(out_points),
+        np.asarray(out_tetras, dtype=tetra_cells.dtype),
+        region_lut,
+        original_to_output_element_id,
+    )
 
 
 def smallest_uint_dtype(max_value: int):

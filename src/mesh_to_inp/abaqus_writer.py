@@ -340,6 +340,94 @@ def make_default_output_lines() -> list[str]:
     ]
 
 
+def make_interface_surface_lines(
+    surface_pairs,
+    instance_name: str = "PART-1",
+) -> list[str]:
+    lines: list[str] = [*make_comment("INTERFACE SURFACES")]
+
+    for pair in surface_pairs:
+        lines.extend(
+            _make_element_surface_lines(
+                name=pair.master_name,
+                faces=pair.master_faces,
+                instance_name=instance_name,
+            )
+        )
+
+        lines.extend(
+            _make_element_surface_lines(
+                name=pair.slave_name,
+                faces=pair.slave_faces,
+                instance_name=instance_name,
+            )
+        )
+
+    return lines
+
+
+def _make_element_surface_lines(
+    name: str,
+    faces,
+    instance_name: str,
+) -> list[str]:
+    lines = [
+        "",
+        f"*SURFACE, TYPE=ELEMENT, NAME={name}",
+    ]
+
+    for face in faces:
+        lines.append(
+            f"{instance_name}.{face.element_id}, {face.face_label}"
+        )
+
+    return lines
+
+
+def make_cohesive_contact_interaction_lines(
+    surface_pairs,
+    cohesive_material,
+) -> list[str]:
+    if cohesive_material.cohesive is None:
+        raise ValueError(
+            f"Material '{cohesive_material.name}' is not a cohesive/contact material."
+        )
+
+    cohesive = cohesive_material.cohesive
+    stiffness = cohesive.stiffness
+    damage = cohesive.damage
+
+    lines: list[str] = [*make_comment("COHESIVE CONTACT INTERACTIONS")]
+
+    for pair in surface_pairs:
+        lines.extend(
+            [
+                "",
+                f"*SURFACE INTERACTION, NAME={pair.interaction_name}",
+                "*COHESIVE BEHAVIOR",
+                (
+                    f"{format_float(stiffness.knn)}, "
+                    f"{format_float(stiffness.kss)}, "
+                    f"{format_float(stiffness.ktt)}"
+                ),
+                "*DAMAGE INITIATION, CRITERION=QUADS",
+                (
+                    f"{format_float(damage.normal_strength)}, "
+                    f"{format_float(damage.shear_strength)}, "
+                    f"{format_float(damage.shear_strength)}"
+                ),
+                "*DAMAGE EVOLUTION, TYPE=ENERGY",
+                f"{format_float(damage.fracture_energy)},",
+                "*DAMAGE STABILIZATION",
+                f"{format_float(damage.stabilization)}",
+                f"*CONTACT PAIR, INTERACTION={pair.interaction_name}, SMALL SLIDING",
+                f"{pair.slave_name}, {pair.master_name}",
+            ]
+        )
+
+    return lines
+
+
 def make_comment(title: str) -> list[str]:
     line = "** " + "=" * 76
     return [

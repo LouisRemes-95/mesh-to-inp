@@ -1,9 +1,9 @@
 job:
-  name: two_cubes_x_1mm_regions
-  output: two_cubes_x_1mm_regions.inp
+  name: mmg_remesh_x4_S
+  output: mmg_remesh_x4_S.inp
 
 mesh:
-  input: two_cubes_x_1mm_regions.mesh
+  input: mmg_remesh_x4_S.mesh
 
 materials:
   - name: Bulk
@@ -17,15 +17,15 @@ materials:
   - name: Interface
     cohesive:
       stiffness:
-        knn: 100000.0
-        kss: 100000.0
-        ktt: 100000.0
+        knn: 10000.0
+        kss: 10000.0
+        ktt: 10000.0
 
       damage:
         normal_strength: 1.5
         shear_strength: 1.5
         fracture_energy: 0.01
-        stabilization: 1.0e-4
+        stabilization: 1.0e-5
 
 sections:
   solid:

@@ -73,6 +73,11 @@ class CohesiveSectionConfig:
 
 
 @dataclass(frozen=True)
+class RigidBodyStabilizationConfig:
+    stiffness: float
+
+
+@dataclass(frozen=True)
 class MacroStressConfig:
     sxx: float
     syy: float
@@ -127,6 +132,7 @@ class CaseConfig:
     solid_section: SolidSectionConfig | None
     cohesive_section: CohesiveSectionConfig | None
     macro_stress: MacroStressConfig
+    rigid_body_stabilization: RigidBodyStabilizationConfig
     step: StepConfig
 
 
@@ -192,6 +198,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         materials,
     )
 
+    rigid_body_stabilization = _parse_rigid_body_stabilization(raw.get("rigid_body_stabilization"))
     macro_stress = _parse_macro_stress(raw.get("loading"))
     step = _parse_step(raw.get("step"))
 
@@ -206,6 +213,7 @@ def _parse_case(raw: dict[str, Any], base_dir: Path) -> CaseConfig:
         materials=materials,
         solid_section=solid_section,
         cohesive_section=cohesive_section,
+        rigid_body_stabilization=rigid_body_stabilization,
         macro_stress=macro_stress,
         step=step,
     )
@@ -467,6 +475,25 @@ def _parse_cohesive_section(
         response=response,
     )
 
+def _parse_rigid_body_stabilization(
+    raw,
+) -> RigidBodyStabilizationConfig:
+    if not isinstance(raw, dict):
+        raise UserError("Missing or invalid 'rigid_body_stabilization' section.")
+
+    if "stiffness" not in raw:
+        raise UserError("Missing required 'rigid_body_stabilization.stiffness'.")
+
+    stiffness = _positive_number(
+        raw,
+        "stiffness",
+        default=1.0e-4,
+        label="rigid_body_stabilization.stiffness",
+    )
+
+    return RigidBodyStabilizationConfig(
+        stiffness=stiffness,
+    )
 
 def _parse_macro_stress(raw: Any) -> MacroStressConfig:
     if not isinstance(raw, dict):

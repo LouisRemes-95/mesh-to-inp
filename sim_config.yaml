@@ -17,15 +17,18 @@ materials:
   - name: Interface
     cohesive:
       stiffness:
-        knn: 10000.0
-        kss: 10000.0
-        ktt: 10000.0
+        knn: 100000.0
+        kss: 100000.0
+        ktt: 100000.0
 
       damage:
-        normal_strength: 1.5
-        shear_strength: 1.5
-        fracture_energy: 0.01
-        stabilization: 1.0e-5
+        normal_strength: 30
+        shear_strength: 30
+        fracture_energy: 4
+        stabilization: 1.0e-4
+
+rigid_body_stabilization:
+  stiffness: 1.0e-4
 
 sections:
   solid:

@@ -12,13 +12,21 @@ from mesh_to_inp.abaqus_writer import (
     make_step_with_cloads_lines,
     make_interface_surface_lines,
     make_cohesive_contact_interaction_lines,
+    make_soft_rbm_spring_part_lines,
+    make_soft_rbm_ground_boundary_lines,
 )
 from mesh_to_inp.loading import (
     compute_face_resultants,
     compute_boundary_tributary_areas,
-    compute_nodal_forces_from_face_resultants,
+    compute_face_force_contributions,
+    correct_moment_preserving_face_resultants,
+    sum_face_force_contributions,
+    print_force_moment_summary,
 )
-from mesh_to_inp.constraints import make_default_rigid_body_constraints
+from mesh_to_inp.soft_rbm_springs import (
+    build_soft_rbm_springs,
+    print_soft_rbm_spring_summary,
+)
 
 
 def convert(case: CaseConfig) -> None:
@@ -58,7 +66,12 @@ def convert(case: CaseConfig) -> None:
         original_to_output_element_id=original_to_output_element_id,
     )
 
-    rigid_body_constraints = make_default_rigid_body_constraints(out_points)
+    soft_rbm_spring_set = build_soft_rbm_springs(
+        points=out_points,
+        stiffness=case.rigid_body_stabilization.stiffness,
+    )
+
+    print_soft_rbm_spring_summary(soft_rbm_spring_set)
 
     face_resultants = compute_face_resultants(
         out_points,
@@ -72,9 +85,30 @@ def convert(case: CaseConfig) -> None:
         region_lut=region_lut,
     )
 
-    nodal_forces = compute_nodal_forces_from_face_resultants(
+    face_force_contributions = compute_face_force_contributions(
         face_resultants=face_resultants,
         tributary_areas=tributary_areas,
+    )
+
+    print_force_moment_summary(
+        label="Before moment correction:",
+        face_force_contributions=face_force_contributions,
+        points=out_points,
+    )
+
+    face_force_contributions = correct_moment_preserving_face_resultants(
+        face_force_contributions=face_force_contributions,
+        points=out_points,
+    )
+
+    print_force_moment_summary(
+        label="After moment correction:",
+        face_force_contributions=face_force_contributions,
+        points=out_points,
+    )
+
+    nodal_forces = sum_face_force_contributions(
+        face_force_contributions=face_force_contributions,
     )
 
     abaqus_mesh = meshio.Mesh(
@@ -86,6 +120,8 @@ def convert(case: CaseConfig) -> None:
 
     lines = read_lines(output_path)
     lines = rewrite_abaqus_lines(lines)
+
+    lines.extend(make_soft_rbm_spring_part_lines(soft_rbm_spring_set,))
 
     if case.solid_section:
         lines.extend(make_solid_section_lines(case.solid_section))
@@ -125,15 +161,19 @@ def convert(case: CaseConfig) -> None:
             cohesive_material=cohesive_contact_material,
         )
     )
+    
+    extra_boundary_lines = make_soft_rbm_ground_boundary_lines(
+        soft_rbm_spring_set,
+    )
 
     lines.extend(
         make_step_with_cloads_lines(
             nodal_forces=nodal_forces,
+            rigid_body_constraints=[],
             step=case.step,
-            rigid_body_constraints=rigid_body_constraints,
+            extra_boundary_lines=extra_boundary_lines,
         )
     )
-
     clean_lines = [
         line if line.strip() else "**"
         for line in lines

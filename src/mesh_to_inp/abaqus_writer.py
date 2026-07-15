@@ -159,12 +159,103 @@ def make_assembly_lines(
     ]
 
 
+def make_soft_rbm_spring_part_lines(
+    spring_set,
+) -> list[str]:
+    """
+    Add ground nodes and SPRING2 elements inside the PART.
+
+    These lines must be written before *END PART.
+    """
+
+    lines: list[str] = [
+        "",
+        "** --- Soft rigid-body spring stabilization nodes ---",
+        "*NODE, NSET=RBM_GROUND_NODES",
+    ]
+
+    for spring in spring_set.springs:
+        x, y, z = spring.ground_position
+
+        lines.append(
+            f"{spring.ground_node_id}, "
+            f"{format_float(float(x))}, "
+            f"{format_float(float(y))}, "
+            f"{format_float(float(z))}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "** --- Soft rigid-body spring elements ---",
+        ]
+    )
+
+    spring_element_ids = []
+
+    for spring in spring_set.springs:
+        elset_name = _soft_rbm_spring_elset_name(spring)
+        spring_element_ids.append(str(spring.element_id))
+
+        lines.extend(
+            [
+                f"*ELEMENT, TYPE=SPRING2, ELSET={elset_name}",
+                (
+                    f"{spring.element_id}, "
+                    f"{spring.selected_node_id}, "
+                    f"{spring.ground_node_id}"
+                ),
+                f"*SPRING, ELSET={elset_name}",
+                f"{spring.dof}, {spring.dof}",
+                f"{format_float(float(spring_set.stiffness))}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "*ELSET, ELSET=RBM_SOFT_SPRINGS",
+            ", ".join(spring_element_ids),
+        ]
+    )
+
+    return lines
+
+
+def make_soft_rbm_ground_boundary_lines(
+    spring_set,
+    instance_name: str = "PART-1",
+) -> list[str]:
+    """
+    Fix the ground nodes of the soft springs.
+
+    These lines should be written inside the STEP.
+    """
+
+    lines: list[str] = [
+        "",
+        "** --- Fixed ground nodes for soft rigid-body springs ---",
+        "*BOUNDARY",
+    ]
+
+    for spring in spring_set.springs:
+        lines.append(
+            f"{instance_name}.{spring.ground_node_id}, 1, 6, 0."
+        )
+
+    return lines
+
+
+def _soft_rbm_spring_elset_name(spring) -> str:
+    return f"RBM_SPRING_{spring.name}"
+
+
 def make_step_with_cloads_lines(
     nodal_forces,
+    rigid_body_constraints,
     step,
-    rigid_body_constraints=None,
+    extra_boundary_lines: list[str] | None = None,
     instance_name: str = "PART-1",
-    force_tolerance: float = 1.0e-12,
 ) -> list[str]:
     nlgeom = "YES" if step.nlgeom else "NO"
     inc = step.increments
@@ -204,18 +295,19 @@ def make_step_with_cloads_lines(
 
     lines.extend(make_step_control_lines(step.controls))
 
-    lines.extend(
-        make_rigid_body_constraint_lines(
-            rigid_body_constraints,
-            instance_name=instance_name,
-        )
-    )
+    if rigid_body_constraints:
+        lines.extend(make_rigid_body_constraint_lines(rigid_body_constraints))
+
+    if extra_boundary_lines:
+        lines.extend(extra_boundary_lines)
 
     lines.extend(
         [
             "",
-            "** --- Macroscopic stress loading as nodal concentrated forces ---",
-            "*CLOAD",
+            "** --- Macro stress nodal forces ---",
+            "*AMPLITUDE, NAME=LinearRamp",
+            "0., 0., 1., 1.",
+            "*CLOAD, AMPLITUDE=LinearRamp",
         ]
     )
 
@@ -223,18 +315,17 @@ def make_step_with_cloads_lines(
         force = nodal_forces.forces[node_id]
 
         for dof, value in enumerate(force, start=1):
-            if abs(value) <= force_tolerance:
-                continue
-
-            lines.append(
-                f"{instance_name}.{node_id}, {dof}, {format_float(float(value))}"
-            )
+            if abs(float(value)) > 0.0:
+                lines.append(
+                    f"{instance_name}.{node_id}, {dof}, {format_float(float(value))}"
+                )
 
     lines.extend(make_default_output_lines())
 
     lines.extend(["", "*END STEP"])
 
     return lines
+
 
 def make_step_control_lines(controls) -> list[str]:
     if controls is None:
@@ -328,15 +419,19 @@ def make_rigid_body_constraint_lines(
 def make_default_output_lines() -> list[str]:
     return [
         "",
-        "** --- Output requests ---",
-        "*OUTPUT, FIELD, NUMBER INTERVAL=100",
+        "** --- Field output ---",
+        "*OUTPUT, FIELD, FREQUENCY=10",
         "*ELEMENT OUTPUT",
         "S, E, PE, PEEQ, STATUS",
         "*NODE OUTPUT",
         "U, RF",
-        "*OUTPUT, HISTORY, NUMBER INTERVAL=100",
+        "*CONTACT OUTPUT",
+        "CSTRESS, CDISP, CSDMG, CSTATUS",
+        "",
+        "** --- History output ---",
+        "*OUTPUT, HISTORY, FREQUENCY=1",
         "*ENERGY OUTPUT",
-        "ALLIE, ALLSE, ALLPD, ALLKE, ALLWK",
+        "ALLIE, ALLSE, ALLPD, ALLKE, ALLWK, ALLVD",
     ]
 
 
